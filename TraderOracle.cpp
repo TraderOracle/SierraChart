@@ -151,12 +151,14 @@ SCSFExport scsf_LindaMACD(SCStudyInterfaceRef sc)
 SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 {
 	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[0];
-	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[1];
-	SCSubgraphRef Subgraph_Explosion = sc.Subgraph[2];	
-	SCSubgraphRef Subgraph_Slow = sc.Subgraph[3];
-	SCSubgraphRef Subgraph_Fast = sc.Subgraph[4];
-	SCSubgraphRef Subgraph_BB = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_WaddahPosBright = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_WaddahNegBright = sc.Subgraph[3];
 
+	SCSubgraphRef Subgraph_Explosion = sc.Subgraph[4];	
+	SCSubgraphRef Subgraph_Slow = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_Fast = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_BB = sc.Subgraph[7];
 
     if (sc.SetDefaults)
     {
@@ -174,12 +176,22 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
         Subgraph_WaddahPos.Name = "Waddah Positive";
         Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
 		Subgraph_WaddahPos.LineWidth = 12;
-		Subgraph_WaddahPos.PrimaryColor = COLOR_GREEN;
+		Subgraph_WaddahPos.PrimaryColor = RGB(1, 110, 5);;
 
         Subgraph_WaddahNeg.Name = "Waddah Negative";
         Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
 		Subgraph_WaddahNeg.LineWidth = 12;
-		Subgraph_WaddahNeg.PrimaryColor = COLOR_RED;
+		Subgraph_WaddahNeg.PrimaryColor = RGB(171, 2, 2);;
+
+		Subgraph_WaddahPosBright.Name = "Waddah Positive Bright";
+        Subgraph_WaddahPosBright.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_WaddahPosBright.LineWidth = 12;
+		Subgraph_WaddahPosBright.PrimaryColor = RGB(0, 255, 0);
+
+        Subgraph_WaddahNegBright.Name = "Waddah Negative Bright";
+        Subgraph_WaddahNegBright.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_WaddahNegBright.LineWidth = 12;
+		Subgraph_WaddahNegBright.PrimaryColor = RGB(255, 0, 0);
 
         Subgraph_Explosion.Name = "Explosion Line";
         Subgraph_Explosion.DrawStyle = DRAWSTYLE_LINE;
@@ -210,13 +222,37 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 	
 	if (t1 > 0)
 	{
-		Subgraph_WaddahPos[sc.Index] = t1;
-		Subgraph_WaddahNeg[sc.Index] = 0;
+		if (t1 > e1)
+		{
+			Subgraph_WaddahPos[sc.Index] = 0;
+			Subgraph_WaddahNeg[sc.Index] = 0;
+			Subgraph_WaddahPosBright[sc.Index] = t1;
+			Subgraph_WaddahNegBright[sc.Index] = 0;
+		}
+		else
+		{
+			Subgraph_WaddahPos[sc.Index] = t1;
+			Subgraph_WaddahNeg[sc.Index] = 0;
+			Subgraph_WaddahPosBright[sc.Index] = 0;
+			Subgraph_WaddahNegBright[sc.Index] = 0;
+		}
 	}
 	else
 	{
-		Subgraph_WaddahNeg[sc.Index] = t1 * -1;
-		Subgraph_WaddahPos[sc.Index] = 0;
+		if (abs(t1) > e1)
+		{
+			Subgraph_WaddahPos[sc.Index] = 0;
+			Subgraph_WaddahNeg[sc.Index] = 0;
+			Subgraph_WaddahPosBright[sc.Index] = 0;
+			Subgraph_WaddahNegBright[sc.Index] = t1 * -1;
+		}
+		else
+		{
+			Subgraph_WaddahPos[sc.Index] = 0;
+			Subgraph_WaddahNeg[sc.Index] = t1 * -1;
+			Subgraph_WaddahPosBright[sc.Index] = 0;
+			Subgraph_WaddahNegBright[sc.Index] = 0;
+		}
 	}
 	
     return;
