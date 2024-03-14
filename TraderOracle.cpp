@@ -2,6 +2,317 @@
 
 SCDLLName("Trader Oracle DLL") 
 
+
+/*==========================================================================*/
+SCSFExport scsf_SierraSqueeze(SCStudyInterfaceRef sc)
+{
+	SCSubgraphRef Subgraph_MomentumHist = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_SqueezeDots = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_Temp4 = sc.Subgraph[4];
+	//SCSubgraphRef Temp5 = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_SignalValues = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_Temp8 = sc.Subgraph[8];
+
+	SCInputRef Input_InputData = sc.Input[0];
+	SCInputRef Input_HistogramLenFirstData = sc.Input[1];
+	SCInputRef Input_SqueezeLength = sc.Input[2];
+	SCInputRef Input_NK = sc.Input[3];
+	SCInputRef Input_NB = sc.Input[4];
+	SCInputRef Input_FirstMovAvgType = sc.Input[5];
+	SCInputRef Input_HistogramLenSecondData = sc.Input[6];
+	SCInputRef Input_SecondMovAvgType = sc.Input[7];
+	SCInputRef Input_VersionUpdate = sc.Input[8];
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "Squeeze Indicator 2";
+		sc.StudyDescription	= "Developed by the user Tony C.";
+
+		Subgraph_MomentumHist.Name = "Momentum HISTOGRAM";
+		Subgraph_MomentumHist.DrawStyle = DRAWSTYLE_BAR;
+		Subgraph_MomentumHist.PrimaryColor = RGB(0,255,0);
+		Subgraph_MomentumHist.LineWidth = 12;
+		Subgraph_MomentumHist.DrawZeros = true;
+
+		Subgraph_SqueezeDots.Name = "Squeeze Dots";
+		Subgraph_SqueezeDots.DrawStyle = DRAWSTYLE_POINT;
+		Subgraph_SqueezeDots.PrimaryColor = RGB(255,0,255);
+		Subgraph_SqueezeDots.LineWidth = 4;
+		Subgraph_SqueezeDots.DrawZeros = true;
+
+		Subgraph_MomentumHistUpColors.Name = "Momentum HISTOGRAM Up Colors";
+		Subgraph_MomentumHistUpColors.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_MomentumHistUpColors.SecondaryColorUsed = 1;
+		Subgraph_MomentumHistUpColors.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_MomentumHistUpColors.SecondaryColor = RGB(0, 130, 130);
+		Subgraph_MomentumHistUpColors.DrawZeros = true;
+		Subgraph_MomentumHistUpColors.LineWidth = 12;
+
+		Subgraph_MomentumHistDownColors.Name	= "Momentum HISTOGRAM Down Colors";
+		Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_MomentumHistDownColors.SecondaryColorUsed = 1;
+		Subgraph_MomentumHistDownColors.PrimaryColor = RGB(255, 0, 0);
+		Subgraph_MomentumHistDownColors.SecondaryColor = RGB(130, 0, 0);
+		Subgraph_MomentumHistDownColors.DrawZeros = true;
+		Subgraph_MomentumHistDownColors.LineWidth = 12;
+
+		Subgraph_SignalValues.Name = "Signal Values";
+		Subgraph_SignalValues.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_SignalValues.PrimaryColor = RGB(127,0,255);
+		Subgraph_SignalValues.DrawZeros = true;
+
+		Input_InputData.Name = "Input Data";
+		Input_InputData.SetInputDataIndex(SC_LAST); // default data field		
+
+		Input_HistogramLenFirstData.Name = "Histogram Length First Data";
+		Input_HistogramLenFirstData.SetInt(20);
+		Input_HistogramLenFirstData.SetIntLimits(1,MAX_STUDY_LENGTH);
+
+		Input_SqueezeLength.Name = "Squeeze Length";
+		Input_SqueezeLength.SetFloat(20);
+
+		Input_NK.Name = "NK.GetFloat()";
+		Input_NK.SetFloat(1.5);
+
+		Input_NB.Name = "NB.GetFloat()";
+		Input_NB.SetFloat(2);
+
+		Input_FirstMovAvgType.Name = "First MA Type";
+		Input_FirstMovAvgType.SetMovAvgType(MOVAVGTYPE_EXPONENTIAL);
+
+		Input_HistogramLenSecondData.Name = "Histogram Length Second Data";
+		Input_HistogramLenSecondData.SetInt(20);
+		Input_HistogramLenSecondData.SetIntLimits(1,MAX_STUDY_LENGTH);
+
+		Input_SecondMovAvgType.Name = "Second MA Type";
+		Input_SecondMovAvgType.SetMovAvgType(MOVAVGTYPE_LINEARREGRESSION);
+
+		// hidden input for old versions support
+		Input_VersionUpdate.SetInt(1);
+
+		sc.AutoLoop = 1;
+		
+
+		return;
+	}
+
+	// upgrading the default settings
+	if (Input_VersionUpdate.GetInt() != 1)
+	{
+		Subgraph_MomentumHistUpColors.Name = "Momentum Histogram Up Colors";
+		Subgraph_MomentumHistUpColors.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_MomentumHistUpColors.SecondaryColorUsed	= 1;
+		Subgraph_MomentumHistUpColors.PrimaryColor = RGB(0, 0, 255);
+		Subgraph_MomentumHistUpColors.SecondaryColor = RGB(0, 0, 130);
+
+		Subgraph_MomentumHistDownColors.Name = "Momentum Histogram Down Colors";
+		Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_MomentumHistDownColors.SecondaryColorUsed = 1;
+		Subgraph_MomentumHistDownColors.PrimaryColor = RGB(255, 0, 0);
+		Subgraph_MomentumHistDownColors.SecondaryColor = RGB(130, 0, 0);
+
+		Subgraph_SignalValues.Name = "Signal Values";
+		Subgraph_SignalValues.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Input_VersionUpdate.SetInt(1);
+	}
+
+	// Inputs
+	int i = sc.Index;
+	const DWORD inside		= RGB(255, 0, 0);	
+	const DWORD outside		= RGB(0, 255, 0);	
+
+	Subgraph_MomentumHistUpColors[i] = 0;
+	Subgraph_MomentumHistDownColors[i] = 0;
+
+	// First output elements are not valid
+	sc.DataStartIndex = Input_HistogramLenSecondData.GetInt();
+
+	SCFloatArrayRef close =  sc.Close;
+	sc.ExponentialMovAvg(close, Subgraph_MomentumHistUpColors, Input_HistogramLenSecondData.GetInt());  // Note: EMA returns close when index is < HistogramLenSecondData.GetInt()
+	sc.MovingAverage(close,  Subgraph_MomentumHistUpColors, Input_FirstMovAvgType.GetMovAvgType(), Input_HistogramLenFirstData.GetInt());
+
+	float hlh = sc.GetHighest(sc.High, Input_HistogramLenSecondData.GetInt());
+	float lll = sc.GetLowest(sc.Low, Input_HistogramLenSecondData.GetInt());
+
+	SCFloatArrayRef price = sc.Open;
+
+	Subgraph_MomentumHistDownColors[sc.Index] = price[sc.Index] - ((hlh + lll)/2.0f + Subgraph_MomentumHistUpColors[sc.Index])/2.0f;
+	sc.LinearRegressionIndicator(Subgraph_MomentumHistDownColors, Subgraph_MomentumHist, Input_HistogramLenSecondData.GetInt());
+	sc.MovingAverage(close,  Subgraph_MomentumHistUpColors, Input_SecondMovAvgType.GetMovAvgType(), Input_HistogramLenSecondData.GetInt());
+
+
+	if(
+		(Subgraph_MomentumHist[i]<0) 
+		&&(Subgraph_MomentumHist[i] < Subgraph_MomentumHist[i-1])
+		)
+
+	{
+		Subgraph_MomentumHist.DataColor[sc.Index] = Subgraph_MomentumHistDownColors.PrimaryColor;		
+	}
+	else if(
+		(Subgraph_MomentumHist[i]<=0) 
+		&&(Subgraph_MomentumHist[i] > Subgraph_MomentumHist[i-1])
+		)
+	{
+		Subgraph_MomentumHist.DataColor[sc.Index] = Subgraph_MomentumHistDownColors.SecondaryColor;		
+	}
+	else if(
+		(Subgraph_MomentumHist[i]>0) 
+		&&(Subgraph_MomentumHist[i] > Subgraph_MomentumHist[i-1])
+		)
+	{
+		Subgraph_MomentumHist.DataColor[sc.Index] = Subgraph_MomentumHistUpColors.PrimaryColor;		
+	}
+	else if(
+		(Subgraph_MomentumHist[i]>=0) 
+		&&(Subgraph_MomentumHist[i] < Subgraph_MomentumHist[i-1])
+		)
+	{
+		Subgraph_MomentumHist.DataColor[sc.Index] = Subgraph_MomentumHistUpColors.SecondaryColor;		
+	}
+
+
+	//Squeeze
+	sc.Keltner(
+		sc.BaseDataIn,
+		sc.Close,
+		Subgraph_Temp8,
+		Input_SqueezeLength.GetInt(),
+		MOVAVGTYPE_SMOOTHED,
+		Input_SqueezeLength.GetInt(),
+		MOVAVGTYPE_SMOOTHED,
+		Input_NK.GetFloat(),
+		Input_NK.GetFloat()
+		);
+
+	float TopBandOut = Subgraph_Temp8.Arrays[0][sc.Index];
+	float BottomBandOut = Subgraph_Temp8.Arrays[1][sc.Index];
+
+	sc.BollingerBands(sc.Close, Subgraph_Temp4, Input_SqueezeLength.GetInt(), Input_NB.GetFloat(), MOVAVGTYPE_SMOOTHED);
+
+	float BU =Subgraph_Temp4.Arrays[0][sc.Index];
+	float BL =Subgraph_Temp4.Arrays[1][sc.Index];
+
+	if (
+		(BU < TopBandOut)
+		|| (BL > BottomBandOut)
+		)
+	{
+		Subgraph_SqueezeDots[sc.Index] = 0.0;
+		Subgraph_SqueezeDots.DataColor[sc.Index] = inside;		
+		Subgraph_SignalValues[sc.Index] = 0.0;
+		Subgraph_SignalValues.DataColor[sc.Index] = inside;
+	}
+	else
+	{
+		Subgraph_SqueezeDots[sc.Index] = 0.0;
+		Subgraph_SqueezeDots.DataColor[sc.Index] = outside;		
+		Subgraph_SignalValues[sc.Index] = 1.0;
+		Subgraph_SignalValues.DataColor[sc.Index] = outside;
+	}
+}
+
+
+/*==========================================================================*/
+
+SCSFExport scsf_GraphicsSettingsExample(SCStudyInterfaceRef sc)
+{
+	SCSubgraphRef Subgraph_SimpleMA = sc.Subgraph[0];
+
+	// Set configuration variables
+
+	if (sc.SetDefaults)
+	{
+		// Set defaults
+
+		sc.GraphName = "Chart Graphics Settings Example";
+
+		sc.StudyDescription = "This example will change the color of the chart background, when the price is above a simple moving average. Add this study during a chart replay for a demonstration.";
+
+		sc.GraphRegion = 0;
+
+		Subgraph_SimpleMA.Name = "Simple Moving Average";
+		Subgraph_SimpleMA.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_SimpleMA.PrimaryColor = RGB(0, 255, 0);
+
+		sc.AutoLoop = 0;
+
+		return;
+	}
+
+
+	// Do data processing
+	if (sc.IsFullRecalculation)
+	{
+		//Specify to use the chart graphic settings.
+		sc.SetUseGlobalGraphicsSettings(sc.ChartNumber, false);
+	}
+
+	uint32_t Color = 0;
+	uint32_t LineWidth = 0;
+	SubgraphLineStyles LineStyle = LINESTYLE_UNSET;
+
+	for (int BarIndex = sc.UpdateStartIndex; BarIndex < sc.ArraySize; BarIndex++)
+	{
+		// Simple moving average in the first subgraph
+		sc.SimpleMovAvg(sc.Close, Subgraph_SimpleMA, BarIndex, 10);
+
+		sc.GetGraphicsSetting(sc.ChartNumber, n_ACSIL::GRAPHICS_SETTING_CHART_BACKGROUND, Color, LineWidth, LineStyle);
+
+		if (Subgraph_SimpleMA.Data[BarIndex] < sc.Close[BarIndex])
+		{
+			if (Color != RGB(255, 0, 0))
+			{
+				Color = RGB(255, 0, 0);
+				sc.SetGraphicsSetting(sc.ChartNumber, n_ACSIL::GRAPHICS_SETTING_CHART_BACKGROUND, Color);
+			}
+
+		}
+		else
+		{
+			if (Color != RGB(0, 0, 0))
+			{
+				Color = RGB(0, 0, 0);
+				sc.SetGraphicsSetting(sc.ChartNumber, n_ACSIL::GRAPHICS_SETTING_CHART_BACKGROUND, Color);
+			}
+		}
+	}
+
+
+}
+
+SCSFExport scsf_test(SCStudyInterfaceRef sc)
+{
+// Marker example
+s_UseTool Tool;
+int UniqueLineNumber = 74191;//any random number.
+
+Tool.Clear(); // Reset tool structure.  Good practice but unnecessary in this case.
+Tool.ChartNumber = sc.ChartNumber;
+
+Tool.DrawingType = DRAWING_MARKER;
+Tool.LineNumber =  UniqueLineNumber +1;
+
+int BarIndex = max(0, sc.ArraySize - 35);
+
+Tool.BeginDateTime = sc.BaseDateTimeIn[BarIndex];
+Tool.BeginValue = sc.High[BarIndex];
+
+Tool.Color = RGB(0,200,200);
+Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+
+Tool.MarkerType = MARKER_X;
+Tool.MarkerSize = 8;
+
+Tool.LineWidth = 5;
+
+sc.UseTool(Tool);
+
+}
+
 /*==========================================================================*/
 
 SCSFExport scsf_LindaMACD(SCStudyInterfaceRef sc)
