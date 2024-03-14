@@ -11,6 +11,9 @@ SCSFExport scsf_LindaMACD(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_Calc = sc.Subgraph[2];
 	SCSubgraphRef Subgraph_Parabolic = sc.Subgraph[3];
 
+	SCSubgraphRef Subgraph_MACDPosBright = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_MACDNegBright = sc.Subgraph[5];
+
 	SCInputRef Input_InputDataHigh = sc.Input[0];
 	SCInputRef Input_InputDataLow = sc.Input[1];
 	SCInputRef Input_StartAccelerationFactor = sc.Input[3];
@@ -38,6 +41,18 @@ SCSFExport scsf_LindaMACD(SCStudyInterfaceRef sc)
 		Subgraph_MACDNeg.DrawZeros = true;
 		Subgraph_MACDNeg.PrimaryColor = RGB(171, 2, 2);
 		Subgraph_MACDNeg.LineWidth = 12;
+
+		Subgraph_MACDPosBright.Name = "MACD/PSAR Positive";
+		Subgraph_MACDPosBright.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_MACDPosBright.DrawZeros = true;
+		Subgraph_MACDPosBright.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_MACDPosBright.LineWidth = 12;
+
+		Subgraph_MACDNegBright.Name = "MACD/PSAR Negative";
+		Subgraph_MACDNegBright.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_MACDNegBright.DrawZeros = true;
+		Subgraph_MACDNegBright.PrimaryColor = RGB(255, 0, 0);
+		Subgraph_MACDNegBright.LineWidth = 12;
 
 		Subgraph_Calc.Name = "Input Data";
 		Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
@@ -90,18 +105,45 @@ SCSFExport scsf_LindaMACD(SCStudyInterfaceRef sc)
 		Input_InputDataLow.GetInputDataIndex()
 	);
 	float SAR = Subgraph_Parabolic[sc.Index]; 
-	if (SAR < sc.Close[sc.Index])
-		Subgraph_MACDPos.PrimaryColor = RGB(0, 255, 0);
-	else
-		Subgraph_MACDPos.PrimaryColor = RGB(1, 110, 5);
 
 	sc.MACD(sc.BaseData[SC_LAST], Subgraph_Calc, sc.Index, 3, 9, 16, MOVAVGTYPE_SIMPLE); 
-	float ix = Subgraph_Calc.Arrays[3][sc.Index];
+	float MACDHistogram = Subgraph_Calc.Arrays[3][sc.Index];
 
-	if (ix > 0)
-		Subgraph_MACDPos[sc.Index] = ix;
-	else
-		Subgraph_MACDNeg[sc.Index] = ix * -1;
+	if (MACDHistogram > 0) // Green MACD
+	{
+		if (SAR < sc.Low[sc.Index])  // If MACD/PSAR agreement, make it bright green
+		{
+			Subgraph_MACDPos[sc.Index] = 0;
+			Subgraph_MACDPosBright[sc.Index] = MACDHistogram;
+			Subgraph_MACDNeg[sc.Index] = 0;
+			Subgraph_MACDNegBright[sc.Index] = 0;
+		}
+		else
+		{
+			Subgraph_MACDPos[sc.Index] = MACDHistogram;
+			Subgraph_MACDPosBright[sc.Index] = 0;
+			Subgraph_MACDNeg[sc.Index] = 0;
+			Subgraph_MACDNegBright[sc.Index] = 0;
+		}
+	}
+	else  // RED MACD
+	{
+		if (SAR > sc.High[sc.Index])  // If MACD/PSAR agreement, make it bright red
+		{
+			Subgraph_MACDPos[sc.Index] = 0;
+			Subgraph_MACDPosBright[sc.Index] = 0;
+			Subgraph_MACDNeg[sc.Index] = 0;
+			Subgraph_MACDNegBright[sc.Index] = MACDHistogram * -1;
+		}
+		else
+		{
+			Subgraph_MACDPos[sc.Index] = 0;
+			Subgraph_MACDPosBright[sc.Index] = 0;
+			Subgraph_MACDNeg[sc.Index] = MACDHistogram * -1;
+			Subgraph_MACDNegBright[sc.Index] = 0;
+		}
+	}
+		
 }
 
 /*==========================================================================*/
