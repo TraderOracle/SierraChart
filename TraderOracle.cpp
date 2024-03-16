@@ -1,3 +1,5 @@
+
+
 #include "sierrachart.h" 
 
 SCDLLName("Trader Oracle DLL") 
@@ -17,28 +19,28 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCInputRef Input_UseT3 = sc.Input[7];
 	SCInputRef Input_UseFisher = sc.Input[8];
 	SCInputRef Input_ADX = sc.Input[9];
-
 	SCInputRef Input_UpOffset = sc.Input[10];
 	SCInputRef Input_DownOffset = sc.Input[11];
 
-	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[0];
-	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[1];
-
-	SCSubgraphRef Subgraph_Slow = sc.Subgraph[2];
-	SCSubgraphRef Subgraph_Fast = sc.Subgraph[3];
-	SCSubgraphRef Subgraph_BB = sc.Subgraph[4];
-
-	SCSubgraphRef Subgraph_ColorBar = sc.Subgraph[5];
-	SCSubgraphRef Subgraph_ColorUp = sc.Subgraph[6];
-	SCSubgraphRef Subgraph_ColorDown = sc.Subgraph[7];
-	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[8];
-
-	SCSubgraphRef Subgraph_LindaMACD = sc.Subgraph[9];
-	SCSubgraphRef Subgraph_Parabolic = sc.Subgraph[10];
-	SCSubgraphRef Subgraph_AO = sc.Subgraph[11];
-	SCSubgraphRef Subgraph_Fisher = sc.Subgraph[12];
-	SCSubgraphRef Subgraph_ADX = sc.Subgraph[13];
-	SCSubgraphRef Subgraph_T3 = sc.Subgraph[14];
+	SCSubgraphRef Subgraph_KAMA = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_Slow = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_Fast = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_BB = sc.Subgraph[7];
+	SCSubgraphRef Subgraph_ColorBar = sc.Subgraph[8];
+	SCSubgraphRef Subgraph_ColorUp = sc.Subgraph[9];
+	SCSubgraphRef Subgraph_ColorDown = sc.Subgraph[10];
+	SCSubgraphRef Subgraph_LindaMACD = sc.Subgraph[11];
+	SCSubgraphRef Subgraph_Parabolic = sc.Subgraph[12];
+	SCSubgraphRef Subgraph_AO = sc.Subgraph[13];
+	SCSubgraphRef Subgraph_Fisher = sc.Subgraph[14];
+	SCSubgraphRef Subgraph_ADX = sc.Subgraph[15];
+	SCSubgraphRef Subgraph_T3 = sc.Subgraph[16];
+	SCSubgraphRef Subgraph_HMA = sc.Subgraph[17];
+	SCSubgraphRef Subgraph_Calc = sc.Subgraph[18];
 
 	COLORREF UpColor = Subgraph_ColorUp.PrimaryColor;
 	COLORREF DownColor = Subgraph_ColorDown.PrimaryColor;
@@ -108,14 +110,10 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_Fast.DrawStyle = DRAWSTYLE_IGNORE;
 		
         Subgraph_WaddahPos.Name = "Waddah Positive";
-        Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
-		Subgraph_WaddahPos.LineWidth = 12;
-		Subgraph_WaddahPos.PrimaryColor = RGB(1, 110, 5);;
+        Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_IGNORE;
 
         Subgraph_WaddahNeg.Name = "Waddah Negative";
-        Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
-		Subgraph_WaddahNeg.LineWidth = 12;
-		Subgraph_WaddahNeg.PrimaryColor = RGB(171, 2, 2);;
+        Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_IGNORE;
 
 		Subgraph_ColorBar.Name = "Bar Color";
 		Subgraph_ColorBar.DrawStyle = DRAWSTYLE_COLOR_BAR;
@@ -139,16 +137,37 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_DotUp.LineWidth = 2;
 		Subgraph_DotUp.DrawZeros = false;
 
+		Subgraph_DotDown.Name = "Standard Sell Dot";
+		Subgraph_DotDown.PrimaryColor = RGB(255, 0, 0);
+		Subgraph_DotDown.DrawStyle = DRAWSTYLE_TRIANGLE_DOWN;
+		Subgraph_DotDown.LineWidth = 2;
+		Subgraph_DotDown.DrawZeros = false;
+
+		Subgraph_KAMA.Name = "KAMA";
+		Subgraph_KAMA.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_KAMA.LineWidth = 2;
+		Subgraph_KAMA.PrimaryColor = RGB(191, 140, 29);
+
 		Subgraph_LindaMACD.Name = "Linda MACD";
 		Subgraph_LindaMACD.DrawStyle = DRAWSTYLE_IGNORE;
 
 		Subgraph_Parabolic.Name = "Parabolic";
 		Subgraph_Parabolic.DrawStyle = DRAWSTYLE_IGNORE;
 
+		Subgraph_HMA.Name = "Hull Moving Average";
+		Subgraph_HMA.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_Calc.Name = "Fisher Calc";
+		Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
+
         return;
     }
 
 	int i = sc.Index;
+	SCBaseDataRef in = sc.BaseData;
+	double close = in[SC_LAST][i];
+	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
+	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
 
 //	for (int i = sc.UpdateStartIndex; i < sc.ArraySize; i++)
 	{
@@ -157,9 +176,30 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		if (i < sc.ArraySize - 1)
 			BarCloseStatus = true;
 
+		float Highest = sc.GetHighest(Price, 10);
+		float Lowest = sc.GetLowest(Price, 10);
+		float Range = Highest - Lowest;
+
+		if (Range == 0)
+			Array_Value[i] = 0;
+		else
+			Array_Value[i] = .66f * ((Price[i] - Lowest) / Range - 0.5f) + 0.67f * Array_Value[i - 1];
+
+		float TruncValue = Array_Value[i];
+
+		if (TruncValue > .99f)
+			TruncValue = .999f;
+		else if (TruncValue < -.99f)
+			TruncValue = -.999f;
+
+		float fish = .5f * (log((1 + TruncValue) / (1 - TruncValue)) + Subgraph_Fisher[i - 1]);
+
 		//int data_type_indx = (int)Input_InputData.GetInputDataIndex();
 		//SCFloatArrayRef in = sc.BaseDataIn[data_type_indx];
 		//SCDateTimeArrayRef ti = sc.BaseDateTimeIn[data_type_indx];
+
+		sc.AdaptiveMovAvg(sc.BaseDataIn[SC_LAST], Subgraph_KAMA, 9, 2, 109);
+		float kama = Subgraph_KAMA[i];
 
 		sc.T3MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_T3, 0.84, 10);
 		float t3 = Subgraph_T3[i];
@@ -167,11 +207,12 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		sc.ADX(sc.BaseDataIn, Subgraph_ADX, i, 14, 14);
 		float adx = Subgraph_ADX[i];
 
-		sc.InverseFisherTransform(sc.BaseDataIn[SC_LAST], Subgraph_Fisher, 10, 3, MOVAVGTYPE_SIMPLE);
-		float fish = Subgraph_Fisher[i];
-
 		sc.AwesomeOscillator(sc.BaseDataIn[SC_LAST], Subgraph_AO, 0, 0);
 		float ao = Subgraph_AO[i];
+
+		sc.HullMovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_HMA, 10);
+		float hma = Subgraph_HMA[i];
+		float phma = Subgraph_HMA[i - 1];
 
 		sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Fast, MOVAVGTYPE_EXPONENTIAL, 20);
 		float a1 = Subgraph_Fast[i];
@@ -189,7 +230,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		float t1 = ((a1 - a2) - (b1 - b2)) * Input_WaddahIntensity.GetInt();
 
 		sc.MACD(sc.BaseDataIn[SC_LAST], Subgraph_LindaMACD, 3, 9, 16, MOVAVGTYPE_SIMPLE);
-		float MACDHistogram = Subgraph_LindaMACD.Arrays[3][i];
+		float linda = Subgraph_LindaMACD.Arrays[3][i];
 
 		sc.Parabolic(sc.BaseDataIn, sc.BaseDateTimeIn, Subgraph_Parabolic, i, 0.02f, 0.02f, 0.2f, 0, SC_HIGH, SC_LOW);
 		float SAR = Subgraph_Parabolic[i];
@@ -199,9 +240,26 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_ColorUp[i] = RGB(0, 255, 0);
 		Subgraph_ColorBar.DataColor[i] = RGB(0, 255, 0);
 
-		if (BarCloseStatus)
+		bool bShowUp = true;
+		bool bShowDown = true;
+
+		if (
+			(Input_UseMacd.GetYesNo() == SC_YES && linda < 0) ||
+			(Input_UseSar.GetYesNo() == SC_YES && SAR > close) || 
+			(Input_UseFisher.GetYesNo() == SC_YES && fish > 0) || 
+			(Input_UseT3.GetYesNo() == SC_YES && t3 > close) || 
+			(Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) || 
+			(Input_UseAO.GetYesNo() == SC_YES && ao < 0) || 
+			(adx < Input_ADX.GetInt()) || 
+			(Input_UseHMA.GetYesNo() == SC_YES && hma > close)
+			)
+			bShowUp = false;
+
+
+		if (BarCloseStatus && bShowUp)
 		{
 			Subgraph_DotUp[i] = sc.Low[i] + ((Input_UpOffset.GetInt() * -1) * sc.TickSize);
+			// Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 		}
 
 	}
@@ -211,52 +269,6 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 #pragma endregion
 
 #pragma region TESTING
-
-SCSFExport scsf_KaufmanEfficiencyRatio(SCStudyInterfaceRef sc)
-{
-	SCSubgraphRef Subgraph_KER = sc.Subgraph[0];
-
-	SCInputRef Input_InputData = sc.Input[0];
-	SCInputRef   Input_Length = sc.Input[1];
-
-	if (sc.SetDefaults)
-	{
-		sc.GraphName = "Kaufman Efficiency Ratio";
-
-		sc.AutoLoop = 1;
-
-		Subgraph_KER.Name = "KER";
-		Subgraph_KER.DrawStyle = DRAWSTYLE_LINE;
-		Subgraph_KER.PrimaryColor = RGB(0, 255, 0);
-		Subgraph_KER.DrawZeros = true;
-
-		Input_InputData.Name = "Input Data";
-		Input_InputData.SetInputDataIndex(SC_LAST);
-
-		Input_Length.Name = "Length";
-		Input_Length.SetInt(9);
-		Input_Length.SetIntLimits(1, MAX_STUDY_LENGTH);
-
-		return;
-	}
-
-	// Compute Direction
-	float Direction = fabs(sc.BaseDataIn[Input_InputData.GetInputDataIndex()][sc.Index] - sc.BaseDataIn[Input_InputData.GetInputDataIndex()][sc.Index - Input_Length.GetInt()]);
-
-	// Compute Volatility
-	float Volatility = 0.0f;
-
-	for (int i = 0; i < Input_Length.GetInt(); i++)
-		Volatility += fabs(sc.BaseDataIn[Input_InputData.GetInputDataIndex()][sc.Index - i] - sc.BaseDataIn[Input_InputData.GetInputDataIndex()][sc.Index - i - 1]);
-
-	// Compute KER
-	if (Volatility == 0.0f)
-		Subgraph_KER[sc.Index] = 0.0f;
-	else
-		Subgraph_KER[sc.Index] = Direction / Volatility;
-}
-
-/*==========================================================================*/
 
 SCSFExport scsf_SierraSqueeze(SCStudyInterfaceRef sc)
 {
