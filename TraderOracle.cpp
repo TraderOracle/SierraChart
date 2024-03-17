@@ -161,6 +161,7 @@ bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
 {
 	SCBaseDataRef InData = sc.BaseData;
 	bool ret_flag = false;
+
 	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
 		&& InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
 		&& IsGreen(InData, index - 1)
@@ -173,15 +174,39 @@ bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
 	return ret_flag;
 }
 
-#pragma endregion
+bool IsTrampoline(SCStudyInterfaceRef sc, int index, float rsi, float prsi, float pprsi, float BBBand, int iTickSize)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (IsRed(InData, index)
+		&& IsRed(InData, index - 1)
+		&& IsGreen(InData, index - 2)
+		&& InData[SC_LAST][index] < InData[SC_LAST][index - 1]
+		&& (rsi > 80 || prsi > 80 || pprsi > 80)
+		&& InData[SC_HIGH][index - 2] >= (BBBand - (1 * iTickSize))
+		)
+		ret_flag = true;
+
+	if (IsGreen(InData, index)
+		&& IsGreen(InData, index - 1)
+		&& IsRed(InData, index - 2)
+		&& InData[SC_LAST][index] > InData[SC_LAST][index - 1]
+		&& (rsi < 20 || prsi < 20 || pprsi < 20)
+		&& InData[SC_LOW][index - 2] <= (BBBand + (1 * iTickSize))
+		)
+		ret_flag = true;
+
+	return ret_flag;
+}
 
 void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int iAboveCandle, int iBuffer)
 {
 	s_UseTool Tool;
 	int i = sc.Index;
 
-	if (txt == "Eq Lo" || txt == "Eq Hi")
-		i = i - 1;
+	if (txt == "Eq Lo" || txt == "Eq Hi" || txt == "TR")
+		i = sc.Index - 1;
 
 	Tool.ChartNumber = sc.ChartNumber;
 	Tool.DrawingType = DRAWING_TEXT;
@@ -217,6 +242,8 @@ void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int i
 	sc.UseTool(Tool);
 }
 
+#pragma endregion
+
 SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 {
 
@@ -248,6 +275,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_3oD = sc.Subgraph[25];
 	SCSubgraphRef Subgraph_EqualH = sc.Subgraph[26];
 	SCSubgraphRef Subgraph_EqualL = sc.Subgraph[27];
+	SCSubgraphRef Subgraph_Tramp = sc.Subgraph[28];
+
 
 	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[3];
 	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[4];
@@ -415,6 +444,12 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_EqualL.SecondaryColor = RGB(1, 97, 3);
 		Subgraph_EqualL.LineWidth = 8;
 
+		Subgraph_Tramp.Name = "Trampoline";
+		Subgraph_Tramp.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_Tramp.PrimaryColor = RGB(0, 0, 0);
+		Subgraph_Tramp.SecondaryColor = RGB(169, 205, 252);
+		Subgraph_Tramp.LineWidth = 8;
+
 		Subgraph_LindaMACD.Name = "Linda MACD";
 		Subgraph_LindaMACD.DrawStyle = DRAWSTYLE_IGNORE;
 
@@ -552,6 +587,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_Calc, MOVAVGTYPE_SIMPLE, 14);
 		float rsi = Subgraph_Calc[i];
+		float prsi = Subgraph_Calc[i-1];
+		float pprsi = Subgraph_Calc[i-2];
 
 #pragma endregion
 
@@ -566,6 +603,11 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
 		if (IsTweezerBottom(sc, sc.CurrentIndex, LowerBand))
 			DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
+
+		if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, UpperBand, sc.TickSize))
+			DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
+		else if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, LowerBand, sc.TickSize))
+			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
 
 		//int ix = min(t1, 255);
 		//UpColor = RGB(0, ix, 0);
