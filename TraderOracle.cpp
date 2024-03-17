@@ -256,7 +256,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCInputRef Input_UseWaddah = sc.Input[1];
 	SCInputRef Input_UseMacd = sc.Input[2];
 	SCInputRef Input_UseSar = sc.Input[3];
-	SCInputRef Input_UseSupertrend = sc.Input[4];
+	SCInputRef Input_UseSuperTrend = sc.Input[4];
 	SCInputRef Input_UseAO = sc.Input[5];
 	SCInputRef Input_UseHMA = sc.Input[6];
 	SCInputRef Input_UseT3 = sc.Input[7];
@@ -265,38 +265,48 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCInputRef Input_UpOffset = sc.Input[10];
 	SCInputRef Input_DownOffset = sc.Input[11];
 
-	SCSubgraphRef Subgraph_KAMA = sc.Subgraph[0];
-	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[1];
-	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_VolImbUp = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_VolImbDown = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_SqueezeUp = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_SqueezeDown = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_3oU = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_3oD = sc.Subgraph[7];
+	SCSubgraphRef Subgraph_EqualH = sc.Subgraph[8];
+	SCSubgraphRef Subgraph_EqualL = sc.Subgraph[9];
+	SCSubgraphRef Subgraph_Tramp = sc.Subgraph[10];
+	SCSubgraphRef Subgraph_KAMA = sc.Subgraph[11];
 
-	SCSubgraphRef Subgraph_SqueezeUp = sc.Subgraph[22];
-	SCSubgraphRef Subgraph_SqueezeDown = sc.Subgraph[23];
-	SCSubgraphRef Subgraph_3oU = sc.Subgraph[24];
-	SCSubgraphRef Subgraph_3oD = sc.Subgraph[25];
-	SCSubgraphRef Subgraph_EqualH = sc.Subgraph[26];
-	SCSubgraphRef Subgraph_EqualL = sc.Subgraph[27];
-	SCSubgraphRef Subgraph_Tramp = sc.Subgraph[28];
+	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[12];
+	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[13];
+	SCSubgraphRef Subgraph_Slow = sc.Subgraph[14];
+	SCSubgraphRef Subgraph_Fast = sc.Subgraph[15];
+	SCSubgraphRef Subgraph_BB = sc.Subgraph[16];
+	SCSubgraphRef Subgraph_ColorBar = sc.Subgraph[17];
+	SCSubgraphRef Subgraph_ColorUp = sc.Subgraph[18];
+	SCSubgraphRef Subgraph_ColorDown = sc.Subgraph[19];
+	SCSubgraphRef Subgraph_LindaMACD = sc.Subgraph[20];
+	SCSubgraphRef Subgraph_Parabolic = sc.Subgraph[21];
+	SCSubgraphRef Subgraph_AO = sc.Subgraph[22];
+	SCSubgraphRef Subgraph_Fisher = sc.Subgraph[23];
+	SCSubgraphRef Subgraph_ADX = sc.Subgraph[24];
+	SCSubgraphRef Subgraph_T3 = sc.Subgraph[25];
+	SCSubgraphRef Subgraph_HMA = sc.Subgraph[26];
+	SCSubgraphRef Subgraph_Calc = sc.Subgraph[27];
+	SCSubgraphRef Subgraph_MomentumHist = sc.Subgraph[28];
+	SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[29];
+	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[30];
+	SCSubgraphRef Subgraph_SuperTrend = sc.Subgraph[31];
 
+	SCSubgraphRef Subgraph_HullATR = sc.Subgraph[33];
 
-	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[3];
-	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[4];
-	SCSubgraphRef Subgraph_Slow = sc.Subgraph[5];
-	SCSubgraphRef Subgraph_Fast = sc.Subgraph[6];
-	SCSubgraphRef Subgraph_BB = sc.Subgraph[7];
-	SCSubgraphRef Subgraph_ColorBar = sc.Subgraph[8];
-	SCSubgraphRef Subgraph_ColorUp = sc.Subgraph[9];
-	SCSubgraphRef Subgraph_ColorDown = sc.Subgraph[10];
-	SCSubgraphRef Subgraph_LindaMACD = sc.Subgraph[11];
-	SCSubgraphRef Subgraph_Parabolic = sc.Subgraph[12];
-	SCSubgraphRef Subgraph_AO = sc.Subgraph[13];
-	SCSubgraphRef Subgraph_Fisher = sc.Subgraph[14];
-	SCSubgraphRef Subgraph_ADX = sc.Subgraph[15];
-	SCSubgraphRef Subgraph_T3 = sc.Subgraph[16];
-	SCSubgraphRef Subgraph_HMA = sc.Subgraph[17];
-	SCSubgraphRef Subgraph_Calc = sc.Subgraph[18];
-	SCSubgraphRef Subgraph_MomentumHist = sc.Subgraph[19];
-	SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[20];
-	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[21];
+	SCFloatArrayRef Array_TrueRange = Subgraph_SuperTrend.Arrays[0];
+	SCFloatArrayRef Array_AvgTrueRange = Subgraph_SuperTrend.Arrays[1];
+	SCFloatArrayRef Array_UpperBandBasic = Subgraph_SuperTrend.Arrays[2];
+	SCFloatArrayRef Array_LowerBandBasic = Subgraph_SuperTrend.Arrays[3];
+	SCFloatArrayRef Array_UpperBand = Subgraph_SuperTrend.Arrays[4];
+	SCFloatArrayRef Array_LowerBand = Subgraph_SuperTrend.Arrays[5];
 
 	COLORREF UpColor = Subgraph_ColorUp.PrimaryColor;
 	COLORREF DownColor = Subgraph_ColorDown.PrimaryColor;
@@ -321,10 +331,10 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_UseMacd.SetYesNo(0);
 
 		Input_UseSar.Name = "Use Parabolic Sar";
-		Input_UseSar.SetYesNo(1);
+		Input_UseSar.SetYesNo(0);
 
-		Input_UseSupertrend.Name = "Use Supertrend";
-		Input_UseSupertrend.SetYesNo(0);
+		Input_UseSuperTrend.Name = "Use Supertrend";
+		Input_UseSuperTrend.SetYesNo(0);
 
 		Input_UseAO.Name = "Use Awesome Oscillator";
 		Input_UseAO.SetYesNo(0);
@@ -341,39 +351,13 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_ADX.Name = "Minimum ADX";
 		Input_ADX.SetInt(0);
 
-
 		Input_UpOffset.Name = "Up Offset In Ticks";
 		Input_UpOffset.SetInt(7);
 
 		Input_DownOffset.Name = "Down Offset In Ticks";
 		Input_DownOffset.SetInt(7);
 
-		Subgraph_BB.Name = "Bollinger Bands";
-		Subgraph_BB.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_AO.Name = "Awesome Oscillator";
-		Subgraph_AO.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_Fisher.Name = "Awesome Oscillator";
-		Subgraph_Fisher.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_ADX.Name = "ADX";
-		Subgraph_ADX.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_T3.Name = "T3";
-		Subgraph_T3.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_Slow.Name = "Slow";
-		Subgraph_Slow.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_Fast.Name = "Fast";
-		Subgraph_Fast.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_WaddahPos.Name = "Waddah Positive";
-		Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_IGNORE;
-
-		Subgraph_WaddahNeg.Name = "Waddah Negative";
-		Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_IGNORE;
+		// =======================================================================
 
 		Subgraph_ColorBar.Name = "Bar Color";
 		Subgraph_ColorBar.DrawStyle = DRAWSTYLE_COLOR_BAR;
@@ -414,7 +398,19 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_SqueezeDown.DrawStyle = DRAWSTYLE_STAR;
 		Subgraph_SqueezeDown.LineWidth = 1;
 		Subgraph_SqueezeDown.DrawZeros = false;
-		
+
+		Subgraph_VolImbUp.Name = "Volume Imbalance Up";
+		Subgraph_VolImbUp.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_VolImbUp.DrawStyle = DRAWSTYLE_ARROW_UP;
+		Subgraph_VolImbUp.LineWidth = 1;
+		Subgraph_VolImbUp.DrawZeros = false;
+
+		Subgraph_VolImbDown.Name = "Volume Imbalance Down";
+		Subgraph_VolImbDown.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_VolImbDown.DrawStyle = DRAWSTYLE_ARROW_DOWN;
+		Subgraph_VolImbDown.LineWidth = 1;
+		Subgraph_VolImbDown.DrawZeros = false;
+
 		Subgraph_KAMA.Name = "KAMA";
 		Subgraph_KAMA.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_KAMA.LineWidth = 2;
@@ -471,6 +467,36 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_MomentumHistDownColors.Name = "Squeeze Relaxer 3";
 		Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
 
+		Subgraph_BB.Name = "Bollinger Bands";
+		Subgraph_BB.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_AO.Name = "Awesome Oscillator";
+		Subgraph_AO.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_Fisher.Name = "Awesome Oscillator";
+		Subgraph_Fisher.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_ADX.Name = "ADX";
+		Subgraph_ADX.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_T3.Name = "T3";
+		Subgraph_T3.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_Slow.Name = "SMA Slow";
+		Subgraph_Slow.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_Fast.Name = "SMA Fast";
+		Subgraph_Fast.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_WaddahPos.Name = "Waddah Positive";
+		Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_WaddahNeg.Name = "Waddah Negative";
+		Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_SuperTrend.Name = "SuperTrend";
+		Subgraph_SuperTrend.DrawStyle = DRAWSTYLE_IGNORE;
+
 		return;
 	}
 
@@ -492,9 +518,52 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	{
 		bool BarCloseStatus = false;
 		bool sqRelaxUp;
+		bool bSuperUp;
 
 		if (i < sc.ArraySize - 1)
 			BarCloseStatus = true;
+
+		// SUPER TREND
+		int ATRMultiplier = 2;
+		int ATRPeriod = 11;
+
+		sc.TrueRange(sc.BaseDataIn, Array_TrueRange);
+		sc.HullMovingAverage(Array_TrueRange, Subgraph_HullATR, ATRPeriod);
+		Array_AvgTrueRange[sc.Index] = Subgraph_HullATR[sc.Index];
+
+		Array_UpperBandBasic[sc.Index] = sc.BaseDataIn[SC_HL][sc.Index] + ATRMultiplier * Array_AvgTrueRange[sc.Index];
+		Array_LowerBandBasic[sc.Index] = sc.BaseDataIn[SC_HL][sc.Index] - ATRMultiplier * Array_AvgTrueRange[sc.Index];
+
+		// Calculate Upper and Lower Bands
+		if (Array_UpperBandBasic[sc.Index] < Array_UpperBand[sc.Index - 1] || sc.Close[sc.Index - 1] > Array_UpperBand[sc.Index - 1])
+			Array_UpperBand[sc.Index] = Array_UpperBandBasic[sc.Index];
+		else
+			Array_UpperBand[sc.Index] = Array_UpperBand[sc.Index - 1];
+
+		if (Array_LowerBandBasic[sc.Index] > Array_LowerBand[sc.Index - 1] || sc.Close[sc.Index - 1] < Array_LowerBand[sc.Index - 1])
+			Array_LowerBand[sc.Index] = Array_LowerBandBasic[sc.Index - 1];
+		else
+			Array_LowerBand[sc.Index] = Array_LowerBand[sc.Index - 1];
+
+		if (sc.Index == 0)
+			Subgraph_SuperTrend[sc.Index] = Array_UpperBand[sc.Index];
+
+		if (Subgraph_SuperTrend[sc.Index - 1] == Array_UpperBand[sc.Index - 1] && sc.Close[sc.Index] < Array_UpperBand[sc.Index])
+			Subgraph_SuperTrend[sc.Index] = Array_UpperBand[sc.Index];
+		else if (Subgraph_SuperTrend[sc.Index - 1] == Array_UpperBand[sc.Index - 1] && sc.Close[sc.Index] > Array_UpperBand[sc.Index])
+			Subgraph_SuperTrend[sc.Index] = Array_LowerBand[sc.Index];
+		else if (Subgraph_SuperTrend[sc.Index - 1] == Array_LowerBand[sc.Index - 1] && sc.Close[sc.Index] > Array_LowerBand[sc.Index])
+			Subgraph_SuperTrend[sc.Index] = Array_LowerBand[sc.Index];
+		else if (Subgraph_SuperTrend[sc.Index - 1] == Array_LowerBand[sc.Index - 1] && sc.Close[sc.Index] < Array_LowerBand[sc.Index])
+			Subgraph_SuperTrend[sc.Index] = Array_UpperBand[sc.Index];
+		else
+			Subgraph_SuperTrend[sc.Index] = Subgraph_SuperTrend[sc.Index - 1];
+
+		if (Subgraph_SuperTrend[sc.Index] == Array_UpperBand[sc.Index])
+			bSuperUp = false;
+		else
+			bSuperUp = true;
+
 
 		// SQUEEZE RELAXER
 		sc.DataStartIndex = 20;
@@ -592,9 +661,6 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
-		//float UpperBand = Subgraph_BB.Arrays[0][i];
-		//float LowerBand = Subgraph_BB.Arrays[1][i];
-
 		if (IsThreeOutsideUp(sc, sc.CurrentIndex))
 			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
 		if (IsThreeOutsideDown(sc, sc.CurrentIndex))
@@ -625,7 +691,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			(Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) ||
 			(Input_UseAO.GetYesNo() == SC_YES && ao < 0) ||
 			(adx < Input_ADX.GetInt()) ||
-			(Input_UseHMA.GetYesNo() == SC_YES && hma > close)
+			(Input_UseHMA.GetYesNo() == SC_YES && hma > close) ||
+			(Input_UseSuperTrend.GetYesNo() == SC_YES && !bSuperUp)
 			)
 			bShowUp = false;
 
@@ -637,7 +704,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			(Input_UseWaddah.GetYesNo() == SC_YES && t1 > 0) ||
 			(Input_UseAO.GetYesNo() == SC_YES && ao > 0) ||
 			(adx < Input_ADX.GetInt()) ||
-			(Input_UseHMA.GetYesNo() == SC_YES && hma < close)
+			(Input_UseHMA.GetYesNo() == SC_YES && hma < close) ||
+			(Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperUp)
 			)
 			bShowDown = false;
 
@@ -657,6 +725,27 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			sc.AddMessageToLog(txt, 0);
 			if (i >= sc.ArraySize - 1) // if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Olympus SELL Signal");
+		}
+		
+		Subgraph_VolImbUp[i] = 0;
+		Subgraph_VolImbDown[i] = 0;
+
+		if (BarCloseStatus && in[SC_OPEN][i] > in[SC_LAST][i-1] && in[SC_OPEN][i] < in[SC_LAST][i] && in[SC_OPEN][i-1] < in[SC_LAST][i-1])
+		{
+			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
+			txt.Format("Volume Imbalance BUY at %.2d", close);
+			sc.AddMessageToLog(txt, 0);
+			if (i >= sc.ArraySize - 1)
+				sc.AlertWithMessage(197, "Volume Imbalance BUY");
+		}
+
+		if (BarCloseStatus && in[SC_OPEN][i] < in[SC_LAST][i-1] && in[SC_OPEN][i] > in[SC_LAST][i] && in[SC_OPEN][i-1] > in[SC_LAST][i-1])
+		{
+			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
+			txt.Format("Volume Imbalance SELL at %.2d", close);
+			sc.AddMessageToLog(txt, 0);
+			if (i >= sc.ArraySize - 1)
+				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
 
 	}
