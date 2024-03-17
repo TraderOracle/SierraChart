@@ -4,8 +4,222 @@ SCDLLName("Trader Oracle DLL")
 
 #pragma region OLYMPUS
 
+#pragma region COMMON FUNCTIONS
+
+double CandleLength(SCBaseDataRef InData, int index)
+{
+	return InData[SC_HIGH][index] - InData[SC_LOW][index];
+}
+
+double BodyLength(SCBaseDataRef InData, int index)
+{
+	return fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]);
+}
+
+double PercentOfCandleLength(SCBaseDataRef InData, int index, double percent)
+{
+	return CandleLength(InData, index) * (percent / 100.0);
+}
+
+double PercentOfBodyLength(SCBaseDataRef InData, int index, double percent)
+{
+	return BodyLength(InData, index) * percent / 100.0;
+}
+
+double UpperWickLength(SCBaseDataRef InData, int index)
+{
+	double upperBoundary = max(InData[SC_LAST][index], InData[SC_OPEN][index]);
+	double upperWickLength = InData[SC_HIGH][index] - upperBoundary;
+	return upperWickLength;
+}
+
+double LowerWickLength(SCBaseDataRef InData, int index)
+{
+	double lowerBoundary = min(InData[SC_LAST][index], InData[SC_OPEN][index]);
+	double lowerWickLength = lowerBoundary - InData[SC_LOW][index];
+	return lowerWickLength;
+}
+
+bool IsGreen(SCBaseDataRef InData, int index)
+{
+	return InData[SC_LAST][index] > InData[SC_OPEN][index];
+}
+
+bool IsRed(SCBaseDataRef InData, int index)
+{
+	return InData[SC_LAST][index] < InData[SC_OPEN][index];
+}
+
+bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent)
+{
+	return abs(value1 - value2) < (3 * percent); //PercentOfCandleLength(InData, index, percent);
+}
+
+bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent)
+{
+	return UpperWickLength(InData, index) < PercentOfCandleLength(InData, index, percent);
+}
+
+bool IsLowerWickSmall(SCBaseDataRef InData, int index, double percent)
+{
+	return LowerWickLength(InData, index) < PercentOfCandleLength(InData, index, percent);
+}
+
+bool IsBullishEngulfing(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (InData[SC_LAST][index - 1] < InData[SC_OPEN][index - 1] && InData[SC_LAST][index] > InData[SC_OPEN][index])
+	{
+		if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
+			(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
+			(InData[SC_LAST][index] > InData[SC_OPEN][index - 1]) &&
+			(InData[SC_OPEN][index] < InData[SC_LAST][index - 1]))
+			ret_flag = true;
+	}
+	return ret_flag;
+}
+
+bool IsBearishEngulfing(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (InData[SC_LAST][index - 1] > InData[SC_OPEN][index - 1] && InData[SC_LAST][index] < InData[SC_OPEN][index])
+	{
+		if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
+			(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
+			(InData[SC_OPEN][index] > InData[SC_LAST][index - 1]) &&
+			(InData[SC_LAST][index] < InData[SC_OPEN][index - 1]))
+			ret_flag = true;
+	}
+
+	return ret_flag;
+}
+
+bool IsThreeOutsideUp(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (IsGreen(InData, index) && (InData[SC_LAST][index] > InData[SC_LAST][index - 1]))
+	{
+		if (IsBullishEngulfing(sc, index - 1))
+			ret_flag = true;
+	}
+
+	return ret_flag;
+}
+
+bool IsThreeOutsideDown(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (IsRed(InData, index) && (InData[SC_LAST][index] < InData[SC_LAST][index - 1]))
+	{
+		if (IsBearishEngulfing(sc, index - 1))
+			ret_flag = true;
+	}
+
+	return ret_flag;
+}
+
+const int k_Body_NUM_OF_CANDLES = 5;				// number of previous candles to calculate body strength
+
+inline bool IsBodyStrong(SCBaseDataRef InData, int index)
+{
+	bool ret_flag = false;
+	float mov_aver = 0;
+	for (int i = 1; i < k_Body_NUM_OF_CANDLES + 1; i++)
+		mov_aver += static_cast<float>(BodyLength(InData, index - i));
+	mov_aver /= k_Body_NUM_OF_CANDLES;
+
+	if (BodyLength(InData, index) > mov_aver)
+		ret_flag = true;
+	return ret_flag;
+}
+
+bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
+		&& InData[SC_LOW][index] < InData[SC_LOW][index - 1]
+		&& IsRed(InData, index - 1)
+		&& IsGreen(InData, index - 2)
+		&& IsGreen(InData, index - 3)
+		&& (InData[SC_HIGH][index - 1] > UpperBand || InData[SC_HIGH][index - 2] > UpperBand)
+		)
+		ret_flag = true;
+
+	return ret_flag;
+}
+
+bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
+		&& InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
+		&& IsGreen(InData, index - 1)
+		&& IsRed(InData, index - 2)
+		&& IsRed(InData, index - 3)
+		&& (InData[SC_LOW][index - 1] < LowerBand || InData[SC_LOW][index - 2] < LowerBand)
+		)
+		ret_flag = true;
+
+	return ret_flag;
+}
+
+#pragma endregion
+
+void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int iAboveCandle, int iBuffer)
+{
+	s_UseTool Tool;
+	int i = sc.Index;
+
+	if (txt == "Eq Lo" || txt == "Eq Hi")
+		i = i - 1;
+
+	Tool.ChartNumber = sc.ChartNumber;
+	Tool.DrawingType = DRAWING_TEXT;
+	Tool.BeginIndex = sc.CurrentIndex;
+	Tool.Region = sc.GraphRegion;
+
+	if (iAboveCandle == 0) // automatic detection
+	{
+		if (sc.Close[i] > sc.Open[i]) // green candle
+			iAboveCandle = 1;
+		else
+			iAboveCandle = -1;
+	}
+
+	if (iAboveCandle == 1)
+	{
+		Tool.BeginValue = sc.High[i] + ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
+		Tool.TextAlignment = DT_CENTER | DT_BOTTOM;
+	}
+	else if(iAboveCandle == -1)
+	{
+		Tool.BeginValue = sc.Low[i] - ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
+		Tool.TextAlignment = DT_CENTER | DT_TOP;
+	}
+
+	Tool.Color = screffy.PrimaryColor;
+	Tool.FontBackColor = screffy.SecondaryColor;
+	Tool.FontSize = screffy.LineWidth;
+	Tool.FontBold = TRUE;
+	Tool.Text.Format("%s", txt.GetChars());
+	Tool.AddMethod = UTAM_ADD_ALWAYS;
+
+	sc.UseTool(Tool);
+}
+
 SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 {
+
 #pragma region INPUTS
 
 	SCString txt;
@@ -30,7 +244,10 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 	SCSubgraphRef Subgraph_SqueezeUp = sc.Subgraph[22];
 	SCSubgraphRef Subgraph_SqueezeDown = sc.Subgraph[23];
-
+	SCSubgraphRef Subgraph_3oU = sc.Subgraph[24];
+	SCSubgraphRef Subgraph_3oD = sc.Subgraph[25];
+	SCSubgraphRef Subgraph_EqualH = sc.Subgraph[26];
+	SCSubgraphRef Subgraph_EqualL = sc.Subgraph[27];
 
 	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[3];
 	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[4];
@@ -174,6 +391,30 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_KAMA.LineWidth = 2;
 		Subgraph_KAMA.PrimaryColor = RGB(191, 140, 29);
 
+		Subgraph_3oU.Name = "Three Outside Up";
+		Subgraph_3oU.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_3oU.PrimaryColor = RGB(255, 255, 29);
+		Subgraph_3oU.SecondaryColor = RGB(1, 97, 3);
+		Subgraph_3oU.LineWidth = 8;
+
+		Subgraph_3oD.Name = "Three Outside Down";
+		Subgraph_3oD.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_3oD.PrimaryColor = RGB(255, 255, 29);
+		Subgraph_3oD.SecondaryColor = RGB(97, 1, 1);
+		Subgraph_3oD.LineWidth = 8;
+
+		Subgraph_EqualH.Name = "Equal High";
+		Subgraph_EqualH.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_EqualH.PrimaryColor = RGB(255, 255, 29);
+		Subgraph_EqualH.SecondaryColor = RGB(97, 1, 1);
+		Subgraph_EqualH.LineWidth = 8;
+
+		Subgraph_EqualL.Name = "Equal Low";
+		Subgraph_EqualL.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_EqualL.PrimaryColor = RGB(255, 255, 29);
+		Subgraph_EqualL.SecondaryColor = RGB(1, 97, 3);
+		Subgraph_EqualL.LineWidth = 8;
+
 		Subgraph_LindaMACD.Name = "Linda MACD";
 		Subgraph_LindaMACD.DrawStyle = DRAWSTYLE_IGNORE;
 
@@ -186,13 +427,13 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_Calc.Name = "RSI";
 		Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
 
-		Subgraph_MomentumHist.Name = "Momentum HISTOGRAM";
+		Subgraph_MomentumHist.Name = "Squeeze Relaxer 1";
 		Subgraph_MomentumHist.DrawStyle = DRAWSTYLE_IGNORE;
 
-		Subgraph_MomentumHistUpColors.Name = "Momentum HISTOGRAM Up Colors";
+		Subgraph_MomentumHistUpColors.Name = "Squeeze Relaxer 2";
 		Subgraph_MomentumHistUpColors.DrawStyle = DRAWSTYLE_IGNORE;
 
-		Subgraph_MomentumHistDownColors.Name = "Momentum HISTOGRAM Down Colors";
+		Subgraph_MomentumHistDownColors.Name = "Squeeze Relaxer 3";
 		Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
 
 		return;
@@ -314,6 +555,18 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
+		//float UpperBand = Subgraph_BB.Arrays[0][i];
+		//float LowerBand = Subgraph_BB.Arrays[1][i];
+
+		if (IsThreeOutsideUp(sc, sc.CurrentIndex))
+			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
+		if (IsThreeOutsideDown(sc, sc.CurrentIndex))
+			DrawText(sc, Subgraph_3oD, "3oD", 0, 5);
+		if (IsTweezerTop(sc, sc.CurrentIndex, UpperBand))
+			DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
+		if (IsTweezerBottom(sc, sc.CurrentIndex, LowerBand))
+			DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
+
 		//int ix = min(t1, 255);
 		//UpColor = RGB(0, ix, 0);
 		Subgraph_ColorUp[i] = RGB(0, 255, 0);
@@ -351,7 +604,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus BUY Signal at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
-			if (i == sc.ArraySize - 1)
+			if (i >= sc.ArraySize - 1)
 				sc.AlertWithMessage(199, "Olympus BUY Signal");
 		}
 
@@ -360,7 +613,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus SELL Signal at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
-			if (i == sc.ArraySize - 1) // if (sc.IsNewBar(i))
+			if (i >= sc.ArraySize - 1) // if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Olympus SELL Signal");
 		}
 
@@ -967,144 +1220,6 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 	}
 	
     return;
-}
-
-#pragma endregion
-
-#pragma region COMMON FUNCTIONS
-
-struct s_CandleStickPatternsFinderSettings
-{
-	int PriceRangeNumberOfBars;
-	double	PriceRangeMultiplier;
-	int UseTrendDetection;
-
-	s_CandleStickPatternsFinderSettings()
-	{
-		// default values
-		PriceRangeNumberOfBars	= 100;
-		PriceRangeMultiplier		= 0.01;
-		UseTrendDetection = true;
-	}
-};
-
-inline double CandleLength(SCBaseDataRef InData, int index);
-inline double BodyLength(SCBaseDataRef InData, int index);
-inline double UpperWickLength(SCBaseDataRef InData, int index);
-inline double LowerWickLength(SCBaseDataRef InData, int index);
-inline bool IsRed(SCBaseDataRef InData, int index);
-inline bool IsGreen(SCBaseDataRef InData, int index);
-inline double PercentOfCandleLength(SCBaseDataRef InData, int index, double percent);
-inline double PercentOfBodyLength(SCBaseDataRef InData, int index, double percent);
-inline bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent);
-inline bool IsLowerWickSmall(SCBaseDataRef InData, int index, double percent);
-inline bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent);
-
-bool IsThreeInsideUp(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index); 
-bool IsThreeOutsideUp(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index); 
-bool IsThreeInsideDown(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index); 
-bool IsThreeOutsideDown(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index);
-
-inline bool IsGreen(SCBaseDataRef InData, int index)
-{ return InData[SC_LAST][index]>InData[SC_OPEN][index]; }
-
-inline bool IsRed(SCBaseDataRef InData, int index)
-{ return InData[SC_LAST][index]<InData[SC_OPEN][index]; }
-
-inline bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent)
-{ return abs(value1 - value2) < PercentOfCandleLength(InData, index, percent); }
-
-inline bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent)
-{ return UpperWickLength(InData, index) < PercentOfCandleLength(InData, index, percent); }
-
-inline bool IsLowerWickSmall(SCBaseDataRef InData, int index, double percent)
-{ return LowerWickLength(InData, index) < PercentOfCandleLength(InData, index, percent); }
-
-inline double CandleLength(SCBaseDataRef InData, int index)
-{ return InData[SC_HIGH][index]-InData[SC_LOW][index]; }
-
-inline double BodyLength(SCBaseDataRef InData, int index)
-{ return fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]); }
-
-inline double PercentOfCandleLength(SCBaseDataRef InData, int index, double percent)
-{ return CandleLength(InData, index) * (percent / 100.0); }
-
-inline double PercentOfBodyLength(SCBaseDataRef InData, int index, double percent)
-{ return BodyLength(InData, index) * percent / 100.0; }
-
-inline double UpperWickLength(SCBaseDataRef InData, int index)
-{
-	double upperBoundary = max(InData[SC_LAST][index], InData[SC_OPEN][index]);
-	double upperWickLength = InData[SC_HIGH][index] - upperBoundary;
-	return upperWickLength;
-}
-
-inline double LowerWickLength(SCBaseDataRef InData, int index)
-{
-	double lowerBoundary = min(InData[SC_LAST][index], InData[SC_OPEN][index]);
-	double lowerWickLength = lowerBoundary - InData[SC_LOW][index];
-	return lowerWickLength;
-}
-
-bool IsBullishEngulfing(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-		if(InData[SC_LAST][index-1] < InData[SC_OPEN][index-1] && InData[SC_LAST][index] > InData[SC_OPEN][index])
-		{
-			if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
-				(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) && 
-				(InData[SC_LAST][index] > InData[SC_OPEN][index - 1]) &&
-				(InData[SC_OPEN][index] < InData[SC_LAST][index - 1]))
-				ret_flag = true;	
-		}
-	return ret_flag;
-}
-
-bool IsBearishEngulfing(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-		if(InData[SC_LAST][index-1] > InData[SC_OPEN][index-1] && InData[SC_LAST][index] < InData[SC_OPEN][index])
-		{
-			if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
-				(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) && 
-				(InData[SC_OPEN][index] > InData[SC_LAST][index - 1]) &&
-				(InData[SC_LAST][index] < InData[SC_OPEN][index - 1]))
-				ret_flag = true;	
-		}
-	
-	return ret_flag;
-}
-
-bool IsThreeOutsideUp(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-		if (IsGreen(InData, index) &&	(InData[SC_LAST][index]>InData[SC_LAST][index-1])) 
-		{
-			if(IsBullishEngulfing(sc,settings,index-1))
-				ret_flag = true;
-		}
-
-	return ret_flag;
-}
-
-bool IsThreeOutsideDown(SCStudyInterfaceRef sc, const s_CandleStickPatternsFinderSettings& settings, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-		if(IsRed(InData, index) && (InData[SC_LAST][index]<InData[SC_LAST][index-1]))
-		{
-			if(IsBearishEngulfing(sc,settings,index-1))
-				ret_flag = true;
-		}
-
-	return ret_flag;
 }
 
 #pragma endregion
