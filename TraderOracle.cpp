@@ -1,5 +1,3 @@
-
-
 #include "sierrachart.h" 
 
 SCDLLName("Trader Oracle DLL") 
@@ -8,6 +6,10 @@ SCDLLName("Trader Oracle DLL")
 
 SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 {
+#pragma region INPUTS
+
+	SCString txt;
+
 	SCInputRef Input_WaddahIntensity = sc.Input[0];
 
 	SCInputRef Input_UseWaddah = sc.Input[1];
@@ -25,6 +27,11 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_KAMA = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[1];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[2];
+
+	SCSubgraphRef Subgraph_SqueezeUp = sc.Subgraph[22];
+	SCSubgraphRef Subgraph_SqueezeDown = sc.Subgraph[23];
+
+
 	SCSubgraphRef Subgraph_WaddahPos = sc.Subgraph[3];
 	SCSubgraphRef Subgraph_WaddahNeg = sc.Subgraph[4];
 	SCSubgraphRef Subgraph_Slow = sc.Subgraph[5];
@@ -41,15 +48,22 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_T3 = sc.Subgraph[16];
 	SCSubgraphRef Subgraph_HMA = sc.Subgraph[17];
 	SCSubgraphRef Subgraph_Calc = sc.Subgraph[18];
+	SCSubgraphRef Subgraph_MomentumHist = sc.Subgraph[19];
+	SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[20];
+	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[21];
 
 	COLORREF UpColor = Subgraph_ColorUp.PrimaryColor;
 	COLORREF DownColor = Subgraph_ColorDown.PrimaryColor;
 
-    if (sc.SetDefaults)
-    {
-        sc.GraphName = "Olympus";
+#pragma endregion
+
+#pragma region DEFAULTS
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "Olympus";
 		sc.GraphRegion = 0;
-        sc.AutoLoop = 1;
+		sc.AutoLoop = 1;
 
 		Input_WaddahIntensity.Name = "Waddah Intensity";
 		Input_WaddahIntensity.SetInt(150);
@@ -83,12 +97,12 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 
 		Input_UpOffset.Name = "Up Offset In Ticks";
-		Input_UpOffset.SetInt(5);
+		Input_UpOffset.SetInt(7);
 
 		Input_DownOffset.Name = "Down Offset In Ticks";
-		Input_DownOffset.SetInt(2);
+		Input_DownOffset.SetInt(7);
 
-        Subgraph_BB.Name = "Bollinger Bands";
+		Subgraph_BB.Name = "Bollinger Bands";
 		Subgraph_BB.DrawStyle = DRAWSTYLE_IGNORE;
 
 		Subgraph_AO.Name = "Awesome Oscillator";
@@ -102,18 +116,18 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		Subgraph_T3.Name = "T3";
 		Subgraph_T3.DrawStyle = DRAWSTYLE_IGNORE;
-		
+
 		Subgraph_Slow.Name = "Slow";
 		Subgraph_Slow.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_Fast.Name = "Fast";
+		Subgraph_Fast.Name = "Fast";
 		Subgraph_Fast.DrawStyle = DRAWSTYLE_IGNORE;
-		
-        Subgraph_WaddahPos.Name = "Waddah Positive";
-        Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_WaddahNeg.Name = "Waddah Negative";
-        Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_IGNORE;
+		Subgraph_WaddahPos.Name = "Waddah Positive";
+		Subgraph_WaddahPos.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_WaddahNeg.Name = "Waddah Negative";
+		Subgraph_WaddahNeg.DrawStyle = DRAWSTYLE_IGNORE;
 
 		Subgraph_ColorBar.Name = "Bar Color";
 		Subgraph_ColorBar.DrawStyle = DRAWSTYLE_COLOR_BAR;
@@ -143,6 +157,18 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_DotDown.LineWidth = 2;
 		Subgraph_DotDown.DrawZeros = false;
 
+		Subgraph_SqueezeUp.Name = "Squeeze Buy Dot";
+		Subgraph_SqueezeUp.PrimaryColor = RGB(255, 255, 0);
+		Subgraph_SqueezeUp.DrawStyle = DRAWSTYLE_STAR;
+		Subgraph_SqueezeUp.LineWidth = 1;
+		Subgraph_SqueezeUp.DrawZeros = false;
+
+		Subgraph_SqueezeDown.Name = "Squeeze Sell Dot";
+		Subgraph_SqueezeDown.PrimaryColor = RGB(255, 255, 0);
+		Subgraph_SqueezeDown.DrawStyle = DRAWSTYLE_STAR;
+		Subgraph_SqueezeDown.LineWidth = 1;
+		Subgraph_SqueezeDown.DrawZeros = false;
+		
 		Subgraph_KAMA.Name = "KAMA";
 		Subgraph_KAMA.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_KAMA.LineWidth = 2;
@@ -157,25 +183,73 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_HMA.Name = "Hull Moving Average";
 		Subgraph_HMA.DrawStyle = DRAWSTYLE_IGNORE;
 
-		Subgraph_Calc.Name = "Fisher Calc";
+		Subgraph_Calc.Name = "RSI";
 		Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
 
-        return;
-    }
+		Subgraph_MomentumHist.Name = "Momentum HISTOGRAM";
+		Subgraph_MomentumHist.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_MomentumHistUpColors.Name = "Momentum HISTOGRAM Up Colors";
+		Subgraph_MomentumHistUpColors.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_MomentumHistDownColors.Name = "Momentum HISTOGRAM Down Colors";
+		Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
+
+		return;
+	}
+
+#pragma endregion
 
 	int i = sc.Index;
+	int& r_SqueezeUp = sc.GetPersistentInt(0);
+	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
 	SCBaseDataRef in = sc.BaseData;
 	double close = in[SC_LAST][i];
 	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
 	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
+	int X = sc.BarIndexToXPixelCoordinate(i);
+	int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
 
-//	for (int i = sc.UpdateStartIndex; i < sc.ArraySize; i++)
+#pragma region INDICATORS
+
+	//	for (int i = sc.UpdateStartIndex; i < sc.ArraySize; i++)
 	{
 		bool BarCloseStatus = false;
+		bool sqRelaxUp;
 
 		if (i < sc.ArraySize - 1)
 			BarCloseStatus = true;
 
+		// SQUEEZE RELAXER
+		sc.DataStartIndex = 20;
+		sc.ExponentialMovAvg(sc.Close, Subgraph_MomentumHistUpColors, 20);  // Note: EMA returns close when index is < HistogramLenSecondData.GetInt()
+		sc.MovingAverage(sc.Close, Subgraph_MomentumHistUpColors, MOVAVGTYPE_EXPONENTIAL, 20);
+
+		float hlh = sc.GetHighest(sc.High, 20);
+		float lll = sc.GetLowest(sc.Low, 20);
+
+		Subgraph_MomentumHistDownColors[sc.Index] = sc.Open[sc.Index] - ((hlh + lll) / 2.0f + Subgraph_MomentumHistUpColors[sc.Index]) / 2.0f;
+		sc.LinearRegressionIndicator(Subgraph_MomentumHistDownColors, Subgraph_MomentumHist, 20);
+		sc.MovingAverage(sc.Close, Subgraph_MomentumHistUpColors, MOVAVGTYPE_LINEARREGRESSION, 20);
+
+		if ((Subgraph_MomentumHist[i] <= 0) && (Subgraph_MomentumHist[i] > Subgraph_MomentumHist[i - 1]))
+		{
+			if (r_SqueezeUp == 0) {
+				Subgraph_SqueezeUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
+				Subgraph_SqueezeDown[i] = 0;
+				r_SqueezeUp = 1;
+			}
+		}
+		else if ((Subgraph_MomentumHist[i] >= 0) && (Subgraph_MomentumHist[i] < Subgraph_MomentumHist[i - 1]))
+		{
+			if (r_SqueezeUp == 1) {
+				Subgraph_SqueezeDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
+				Subgraph_SqueezeUp[i] = 0;
+				r_SqueezeUp = 0;
+			}
+		}
+
+		// FISHER TRANSFORM
 		float Highest = sc.GetHighest(Price, 10);
 		float Lowest = sc.GetLowest(Price, 10);
 		float Range = Highest - Lowest;
@@ -217,7 +291,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Fast, MOVAVGTYPE_EXPONENTIAL, 20);
 		float a1 = Subgraph_Fast[i];
 		float b1 = Subgraph_Fast[i - 1];
-	
+
 		sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Slow, MOVAVGTYPE_EXPONENTIAL, 40);
 		float a2 = Subgraph_Slow[i];
 		float b2 = Subgraph_Slow[i - 1];
@@ -235,6 +309,11 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		sc.Parabolic(sc.BaseDataIn, sc.BaseDateTimeIn, Subgraph_Parabolic, i, 0.02f, 0.02f, 0.2f, 0, SC_HIGH, SC_LOW);
 		float SAR = Subgraph_Parabolic[i];
 
+		sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_Calc, MOVAVGTYPE_SIMPLE, 14);
+		float rsi = Subgraph_Calc[i];
+
+#pragma endregion
+
 		//int ix = min(t1, 255);
 		//UpColor = RGB(0, ix, 0);
 		Subgraph_ColorUp[i] = RGB(0, 255, 0);
@@ -245,21 +324,44 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (
 			(Input_UseMacd.GetYesNo() == SC_YES && linda < 0) ||
-			(Input_UseSar.GetYesNo() == SC_YES && SAR > close) || 
-			(Input_UseFisher.GetYesNo() == SC_YES && fish > 0) || 
-			(Input_UseT3.GetYesNo() == SC_YES && t3 > close) || 
-			(Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) || 
-			(Input_UseAO.GetYesNo() == SC_YES && ao < 0) || 
-			(adx < Input_ADX.GetInt()) || 
+			(Input_UseSar.GetYesNo() == SC_YES && SAR > close) ||
+			(Input_UseFisher.GetYesNo() == SC_YES && fish < 0) ||
+			(Input_UseT3.GetYesNo() == SC_YES && t3 > close) ||
+			(Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) ||
+			(Input_UseAO.GetYesNo() == SC_YES && ao < 0) ||
+			(adx < Input_ADX.GetInt()) ||
 			(Input_UseHMA.GetYesNo() == SC_YES && hma > close)
 			)
 			bShowUp = false;
 
+		if (
+			(Input_UseMacd.GetYesNo() == SC_YES && linda > 0) ||
+			(Input_UseSar.GetYesNo() == SC_YES && SAR < close) ||
+			(Input_UseFisher.GetYesNo() == SC_YES && fish > 0) ||
+			(Input_UseT3.GetYesNo() == SC_YES && t3 < close) ||
+			(Input_UseWaddah.GetYesNo() == SC_YES && t1 > 0) ||
+			(Input_UseAO.GetYesNo() == SC_YES && ao > 0) ||
+			(adx < Input_ADX.GetInt()) ||
+			(Input_UseHMA.GetYesNo() == SC_YES && hma < close)
+			)
+			bShowDown = false;
 
 		if (BarCloseStatus && bShowUp)
 		{
-			Subgraph_DotUp[i] = sc.Low[i] + ((Input_UpOffset.GetInt() * -1) * sc.TickSize);
-			// Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
+			Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
+			txt.Format("Olympus BUY Signal at %.2d", close);
+			sc.AddMessageToLog(txt, 0);
+			if (i == sc.ArraySize - 1)
+				sc.AlertWithMessage(199, "Olympus BUY Signal");
+		}
+
+		if (BarCloseStatus && bShowDown)
+		{
+			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
+			txt.Format("Olympus SELL Signal at %.2d", close);
+			sc.AddMessageToLog(txt, 0);
+			if (i == sc.ArraySize - 1) // if (sc.IsNewBar(i))
+				sc.AlertWithMessage(200, "Olympus SELL Signal");
 		}
 
 	}
