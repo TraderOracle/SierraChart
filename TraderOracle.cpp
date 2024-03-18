@@ -262,8 +262,13 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCInputRef Input_UseT3 = sc.Input[7];
 	SCInputRef Input_UseFisher = sc.Input[8];
 	SCInputRef Input_ADX = sc.Input[9];
-	SCInputRef Input_UpOffset = sc.Input[10];
-	SCInputRef Input_DownOffset = sc.Input[11];
+
+	SCInputRef Input_BarColor = sc.Input[10];
+	SCInputRef Input_BarColorWaddah = sc.Input[11];
+	SCInputRef Input_BarColorLinda = sc.Input[12];
+
+	SCInputRef Input_UpOffset = sc.Input[13];
+	SCInputRef Input_DownOffset = sc.Input[14];
 
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
@@ -356,6 +361,16 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		Input_DownOffset.Name = "Down Offset In Ticks";
 		Input_DownOffset.SetInt(7);
+
+		Input_BarColor.Name = "Bar coloring";
+		Input_BarColor.SetCustomInputStrings("None;Waddah;Linda MACD");
+		Input_BarColor.SetCustomInputIndex(0);
+
+		Input_BarColorWaddah.Name = "Bar color Waddah offset";
+		Input_BarColorWaddah.SetInt(80);
+
+		Input_BarColorLinda.Name = "Bar color LindaMACD offset";
+		Input_BarColorLinda.SetInt(40);
 
 		// =======================================================================
 
@@ -675,10 +690,26 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		else if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, LowerBand, sc.TickSize))
 			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
 
-		//int ix = min(t1, 255);
-		//UpColor = RGB(0, ix, 0);
-		Subgraph_ColorUp[i] = RGB(0, 255, 0);
-		Subgraph_ColorBar.DataColor[i] = RGB(0, 255, 0);
+		if (Input_BarColor.GetIndex() != 0)
+			sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
+
+		int iRedGreenColor = 255;
+		if (Input_BarColor.GetIndex() == 1)
+		{
+			iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
+			if (t1 > 0)
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, iRedGreenColor, 0);
+			else
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(iRedGreenColor, 0, 0);
+		}
+		else if (Input_BarColor.GetIndex() == 2)
+		{
+			iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
+			if (linda > 0)
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, iRedGreenColor, 0);
+			else
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(iRedGreenColor, 0, 0);
+		}
 
 		bool bShowUp = true;
 		bool bShowDown = true;
