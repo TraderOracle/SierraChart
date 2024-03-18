@@ -968,7 +968,7 @@ SCSFExport scsf_SierraSqueeze(SCStudyInterfaceRef sc)
 }
 
 
-/*==========================================================================*/
+/*==========================================================================
 
 SCSFExport scsf_GraphicsSettingsExample(SCStudyInterfaceRef sc)
 {
@@ -1064,6 +1064,8 @@ Tool.LineWidth = 5;
 sc.UseTool(Tool);
 
 }
+
+*/
 
 #pragma endregion
 
