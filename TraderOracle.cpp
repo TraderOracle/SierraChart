@@ -2,8 +2,29 @@
 
 SCDLLName("Trader Oracle DLL") 
 
-SCSFExport scsf_DTC_Scalper(SCStudyInterfaceRef sc)
+void DrawToChart(SCStudyInterfaceRef sc, SCString t, int iLeft, uint32_t c)
 {
+	s_UseTool Tool;
+	Tool.ChartNumber = sc.ChartNumber;
+	Tool.DrawingType = DRAWING_TEXT;
+	Tool.BeginValue = 95; // from bottom
+	Tool.BeginDateTime = iLeft; // from left side 90=start
+	Tool.UseRelativeVerticalValues = true;
+	Tool.Region = sc.GraphRegion;
+	Tool.TextAlignment = DT_TOP | DT_TOP;
+	Tool.Color = RGB(255, 255, 255);
+	Tool.FontBackColor = c;
+	Tool.FontSize = 12;
+	Tool.FontBold = TRUE;
+	Tool.Text = t;
+	Tool.AddMethod = UTAM_ADD_ALWAYS;
+	sc.UseTool(Tool);
+}
+
+SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
+{
+	int i = sc.Index;
+
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
 	SCSubgraphRef Subgraph_GreenLine = sc.Subgraph[2];
@@ -11,49 +32,64 @@ SCSFExport scsf_DTC_Scalper(SCStudyInterfaceRef sc)
 
 	if (sc.SetDefaults)
 	{
-		sc.GraphName = "DTC Scalper";
+		sc.GraphName = "DTS Scalper";
 		sc.GraphRegion = 1;
 		sc.AutoLoop = 1;
-
+		
 		return;
 	}
 
 	Subgraph_GreenLine.Name = "Green Line";
-	Subgraph_GreenLine.PrimaryColor = RGB(0, 255, 0);
+	Subgraph_GreenLine.PrimaryColor = RGB(0, 180, 0);
 	Subgraph_GreenLine.DrawStyle = DRAWSTYLE_LINE;
 	Subgraph_GreenLine.LineWidth = 1;
 
 	Subgraph_RedLine.Name = "Red Line";
-	Subgraph_RedLine.PrimaryColor = RGB(255, 0, 0);
+	Subgraph_RedLine.PrimaryColor = RGB(180, 0, 0);
 	Subgraph_RedLine.DrawStyle = DRAWSTYLE_LINE;
 	Subgraph_RedLine.LineWidth = 1;
 
 	Subgraph_DotUp.Name = "Standard Buy Dot";
 	Subgraph_DotUp.PrimaryColor = RGB(0, 255, 0);
 	Subgraph_DotUp.DrawStyle = DRAWSTYLE_POINT;
-	Subgraph_DotUp.LineWidth = 5;
+	Subgraph_DotUp.LineWidth = 3;
 	Subgraph_DotUp.DrawZeros = false;
 
 	Subgraph_DotDown.Name = "Standard Sell Dot";
 	Subgraph_DotDown.PrimaryColor = RGB(255, 0, 0);
 	Subgraph_DotDown.DrawStyle = DRAWSTYLE_POINT;
-	Subgraph_DotDown.LineWidth = 5;
+	Subgraph_DotDown.LineWidth = 3;
 	Subgraph_DotDown.DrawZeros = false;
 
-	double green = sc.Volume[sc.Index] * (sc.Close[sc.Index] - sc.Low[sc.Index]) / (sc.High[sc.Index] - sc.Low[sc.Index]);
-	double red = sc.Volume[sc.Index] * (sc.High[sc.Index] - sc.Close[sc.Index]) / (sc.High[sc.Index] - sc.Low[sc.Index]);
-	Subgraph_DotUp[sc.Index] = green;
-	Subgraph_DotDown[sc.Index] = red;
+	double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
+	double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
+	Subgraph_DotUp[i] = green;
+	Subgraph_DotDown[i] = red;
 
-	Subgraph_GreenLine[sc.Index] = green;
-	Subgraph_RedLine[sc.Index] = red;
+	Subgraph_GreenLine[i] = green;
+	Subgraph_RedLine[i] = red;
+	
+	//SCString t;
 
-	int x1 = sc.BarIndexToXPixelCoordinate(sc.Index - 1);
-	int x2 = sc.BarIndexToXPixelCoordinate(sc.Index);
-
-
+	if (green > red)
+	{
+	//	t.Format("Last %d", sc.Volume[i-1]);
+	//	DrawToChart(sc, t, 62, RGB(0, 0, 0));
+	//	t.Format("Current %d", sc.Volume[i]);
+	//	DrawToChart(sc, t, 75, RGB(0, 0, 0));
+	//	t.Format("Buyers Winning = %d", green);
+	//	DrawToChart(sc, t, 90, RGB(0, 190, 0));
+	}
+	else
+	{
+	//	t.Format("Last %d", sc.Volume[i - 1]);
+	//	DrawToChart(sc, t, 62, RGB(0, 0, 0));
+	//	t.Format("Current %d", sc.Volume[i]);
+	//	DrawToChart(sc, t, 75, RGB(0, 0, 0));
+	//	t.Format("Sellers Winning = %d", red);
+	//	DrawToChart(sc, t, 90, RGB(190, 0, 0));
+	}
 }
-
 
 #pragma region OLYMPUS
 
@@ -615,8 +651,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	double close = in[SC_LAST][i];
 	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
 	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
-	int X = sc.BarIndexToXPixelCoordinate(i);
-	int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
+	//int X = sc.BarIndexToXPixelCoordinate(i);
+	//int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
 
 #pragma region INDICATORS
 
@@ -875,7 +911,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
-			if (i >= sc.ArraySize - 1)
+			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
 
