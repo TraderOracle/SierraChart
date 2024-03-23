@@ -2,6 +2,59 @@
 
 SCDLLName("Trader Oracle DLL") 
 
+SCSFExport scsf_DTC_Scalper(SCStudyInterfaceRef sc)
+{
+	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_GreenLine = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_RedLine = sc.Subgraph[3];
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "DTC Scalper";
+		sc.GraphRegion = 1;
+		sc.AutoLoop = 1;
+
+		return;
+	}
+
+	Subgraph_GreenLine.Name = "Green Line";
+	Subgraph_GreenLine.PrimaryColor = RGB(0, 255, 0);
+	Subgraph_GreenLine.DrawStyle = DRAWSTYLE_LINE;
+	Subgraph_GreenLine.LineWidth = 1;
+
+	Subgraph_RedLine.Name = "Red Line";
+	Subgraph_RedLine.PrimaryColor = RGB(255, 0, 0);
+	Subgraph_RedLine.DrawStyle = DRAWSTYLE_LINE;
+	Subgraph_RedLine.LineWidth = 1;
+
+	Subgraph_DotUp.Name = "Standard Buy Dot";
+	Subgraph_DotUp.PrimaryColor = RGB(0, 255, 0);
+	Subgraph_DotUp.DrawStyle = DRAWSTYLE_POINT;
+	Subgraph_DotUp.LineWidth = 5;
+	Subgraph_DotUp.DrawZeros = false;
+
+	Subgraph_DotDown.Name = "Standard Sell Dot";
+	Subgraph_DotDown.PrimaryColor = RGB(255, 0, 0);
+	Subgraph_DotDown.DrawStyle = DRAWSTYLE_POINT;
+	Subgraph_DotDown.LineWidth = 5;
+	Subgraph_DotDown.DrawZeros = false;
+
+	double green = sc.Volume[sc.Index] * (sc.Close[sc.Index] - sc.Low[sc.Index]) / (sc.High[sc.Index] - sc.Low[sc.Index]);
+	double red = sc.Volume[sc.Index] * (sc.High[sc.Index] - sc.Close[sc.Index]) / (sc.High[sc.Index] - sc.Low[sc.Index]);
+	Subgraph_DotUp[sc.Index] = green;
+	Subgraph_DotDown[sc.Index] = red;
+
+	Subgraph_GreenLine[sc.Index] = green;
+	Subgraph_RedLine[sc.Index] = red;
+
+	int x1 = sc.BarIndexToXPixelCoordinate(sc.Index - 1);
+	int x2 = sc.BarIndexToXPixelCoordinate(sc.Index);
+
+
+}
+
+
 #pragma region OLYMPUS
 
 #pragma region COMMON FUNCTIONS
@@ -146,7 +199,8 @@ bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand)
 	SCBaseDataRef InData = sc.BaseData;
 	bool ret_flag = false;
 	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
-		&& InData[SC_LOW][index] < InData[SC_LOW][index - 1]
+		&& InData[SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
+		&& IsRed(InData, index)
 		&& IsRed(InData, index - 1)
 		&& IsGreen(InData, index - 2)
 		&& IsGreen(InData, index - 3)
@@ -164,6 +218,7 @@ bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
 
 	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
 		&& InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
+		&& IsGreen(InData, index)
 		&& IsGreen(InData, index - 1)
 		&& IsRed(InData, index - 2)
 		&& IsRed(InData, index - 3)
@@ -194,6 +249,42 @@ bool IsTrampoline(SCStudyInterfaceRef sc, int index, float rsi, float prsi, floa
 		&& InData[SC_LAST][index] > InData[SC_LAST][index - 1]
 		&& (rsi < 20 || prsi < 20 || pprsi < 20)
 		&& InData[SC_LOW][index - 2] <= (BBBand + (1 * iTickSize))
+		)
+		ret_flag = true;
+
+	return ret_flag;
+}
+
+bool IsStairs(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	return ret_flag;
+}
+
+bool IsVolImbGreen(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+	
+	if (IsGreen(InData, index)
+		&& IsGreen(InData, index - 1)
+		&& InData[SC_OPEN][index] > InData[SC_LAST][index - 1]
+		)
+		ret_flag = true;
+
+	return ret_flag;
+}
+
+bool IsVolImbRed(SCStudyInterfaceRef sc, int index)
+{
+	SCBaseDataRef InData = sc.BaseData;
+	bool ret_flag = false;
+
+	if (IsRed(InData, index)
+		&& IsRed(InData, index - 1)
+		&& InData[SC_OPEN][index] < InData[SC_LAST][index - 1]
 		)
 		ret_flag = true;
 
@@ -357,13 +448,13 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_ADX.SetInt(0);
 
 		Input_UpOffset.Name = "Up Offset In Ticks";
-		Input_UpOffset.SetInt(7);
+		Input_UpOffset.SetInt(2);
 
 		Input_DownOffset.Name = "Down Offset In Ticks";
-		Input_DownOffset.SetInt(7);
+		Input_DownOffset.SetInt(2);
 
 		Input_BarColor.Name = "Bar coloring";
-		Input_BarColor.SetCustomInputStrings("None;Waddah;Linda MACD");
+		Input_BarColor.SetCustomInputStrings("None;Waddah;Linda MACD;Supertrend");
 		Input_BarColor.SetCustomInputIndex(0);
 
 		Input_BarColorWaddah.Name = "Bar color Waddah offset";
@@ -689,12 +780,12 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
 		else if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, LowerBand, sc.TickSize))
 			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
-
+		
 		if (Input_BarColor.GetIndex() != 0)
 			sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
 
 		int iRedGreenColor = 255;
-		if (Input_BarColor.GetIndex() == 1)
+		if (Input_BarColor.GetIndex() == 1) // waddah explosion
 		{
 			iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
 			if (t1 > 0)
@@ -702,13 +793,20 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			else
 				Subgraph_ColorBar.DataColor[sc.Index] = RGB(iRedGreenColor, 0, 0);
 		}
-		else if (Input_BarColor.GetIndex() == 2)
+		else if (Input_BarColor.GetIndex() == 2) // linda macd
 		{
 			iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
 			if (linda > 0)
 				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, iRedGreenColor, 0);
 			else
 				Subgraph_ColorBar.DataColor[sc.Index] = RGB(iRedGreenColor, 0, 0);
+		}
+		else if (Input_BarColor.GetIndex() == 3) // super trend
+		{
+			if (bSuperUp)
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, 255, 0);
+			else
+				Subgraph_ColorBar.DataColor[sc.Index] = RGB(255, 0, 0);
 		}
 
 		bool bShowUp = true;
@@ -754,24 +852,26 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus SELL Signal at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
-			if (i >= sc.ArraySize - 1) // if (sc.IsNewBar(i))
+			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Olympus SELL Signal");
 		}
 		
 		Subgraph_VolImbUp[i] = 0;
 		Subgraph_VolImbDown[i] = 0;
 
-		if (BarCloseStatus && in[SC_OPEN][i] > in[SC_LAST][i-1] && in[SC_OPEN][i] < in[SC_LAST][i] && in[SC_OPEN][i-1] < in[SC_LAST][i-1])
+		if (IsVolImbGreen(sc, sc.CurrentIndex))
 		{
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
-			if (i >= sc.ArraySize - 1)
+			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(197, "Volume Imbalance BUY");
 		}
 
-		if (BarCloseStatus && in[SC_OPEN][i] < in[SC_LAST][i-1] && in[SC_OPEN][i] > in[SC_LAST][i] && in[SC_OPEN][i-1] > in[SC_LAST][i-1])
+		if (IsVolImbRed(sc, sc.CurrentIndex))
 		{
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			sc.AddMessageToLog(txt, 0);
