@@ -2,8 +2,31 @@
 
 SCDLLName("Trader Oracle DLL") 
 
-void DrawToChart(SCStudyInterfaceRef sc, SCString t, int iLeft, uint32_t c)
+void DrawToChart(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc)
 {
+	sc.Graphics.SetTextAlign(TA_NOUPDATECP);
+
+	n_ACSIL::s_GraphicsFont GraphicsFont;
+	GraphicsFont.m_Height = 16;
+	GraphicsFont.m_Weight = FW_BOLD;
+	sc.Graphics.SetTextFont(GraphicsFont);
+
+	n_ACSIL::s_GraphicsColor GraphicsColor;
+
+	GraphicsColor.SetRGB(64, 128, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Hello. Sierra Chart is the best.", 30, 30);
+
+	GraphicsColor.SetRGB(255, 0, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Test.", 30, 50);
+
+	GraphicsColor.SetRGB(255, 255, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Test.", 30, 70);
+
+	return;
+/*
 	s_UseTool Tool;
 	Tool.ChartNumber = sc.ChartNumber;
 	Tool.DrawingType = DRAWING_TEXT;
@@ -19,6 +42,7 @@ void DrawToChart(SCStudyInterfaceRef sc, SCString t, int iLeft, uint32_t c)
 	Tool.Text = t;
 	Tool.AddMethod = UTAM_ADD_ALWAYS;
 	sc.UseTool(Tool);
+*/
 }
 
 SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
@@ -29,6 +53,9 @@ SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
 	SCSubgraphRef Subgraph_GreenLine = sc.Subgraph[2];
 	SCSubgraphRef Subgraph_RedLine = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_Winner = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_VolCurr = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_VolPrev = sc.Subgraph[6];
 
 	if (sc.SetDefaults)
 	{
@@ -61,6 +88,30 @@ SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 	Subgraph_DotDown.LineWidth = 3;
 	Subgraph_DotDown.DrawZeros = false;
 
+	Subgraph_Winner.Name = "Green or Red Dominant";
+	Subgraph_Winner.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_Winner.PrimaryColor = RGB(255, 255,255);
+	Subgraph_Winner.SecondaryColorUsed = true;
+	Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
+	Subgraph_Winner.LineWidth = 12;
+	Subgraph_Winner.DrawZeros = false;
+
+	Subgraph_VolCurr.Name = "Volume Current";
+	Subgraph_VolCurr.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_VolCurr.PrimaryColor = RGB(0, 0, 0);
+	Subgraph_VolCurr.SecondaryColorUsed = true;
+	Subgraph_VolCurr.SecondaryColor = RGB(255, 255, 255);
+	Subgraph_VolCurr.LineWidth = 12;
+	Subgraph_VolCurr.DrawZeros = false;
+
+	Subgraph_VolPrev.Name = "Volume Previous";
+	Subgraph_VolPrev.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_VolPrev.PrimaryColor = RGB(0, 0, 0);
+	Subgraph_VolPrev.SecondaryColorUsed = true;
+	Subgraph_VolPrev.SecondaryColor = RGB(255, 255, 255);
+	Subgraph_VolPrev.LineWidth = 12;
+	Subgraph_VolPrev.DrawZeros = false;
+
 	double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
 	double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
 	Subgraph_DotUp[i] = green;
@@ -68,26 +119,27 @@ SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 
 	Subgraph_GreenLine[i] = green;
 	Subgraph_RedLine[i] = red;
-	
-	//SCString t;
+
+	//sc.p_GDIFunction = DrawToChart;
+	SCString t;
+
+	//t.Format("Vol: %0.0f", sc.Volume[i]);
+	//sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 60, 90, Subgraph_VolCurr, false, t, true, 1);
+
+	//u.Format("Prev: %0.0f", sc.Volume[i-1]);
+	//sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 75, 90, Subgraph_VolPrev, false, t, true, 1);
 
 	if (green > red)
 	{
-	//	t.Format("Last %d", sc.Volume[i-1]);
-	//	DrawToChart(sc, t, 62, RGB(0, 0, 0));
-	//	t.Format("Current %d", sc.Volume[i]);
-	//	DrawToChart(sc, t, 75, RGB(0, 0, 0));
-	//	t.Format("Buyers Winning = %d", green);
-	//	DrawToChart(sc, t, 90, RGB(0, 190, 0));
+		Subgraph_Winner.SecondaryColor = RGB(0, 140, 0);
+		t.Format("Prev: %0.0f     Vol: %0.0f     Buyers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (green / sc.Volume[i]) * 100);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
 	}
 	else
 	{
-	//	t.Format("Last %d", sc.Volume[i - 1]);
-	//	DrawToChart(sc, t, 62, RGB(0, 0, 0));
-	//	t.Format("Current %d", sc.Volume[i]);
-	//	DrawToChart(sc, t, 75, RGB(0, 0, 0));
-	//	t.Format("Sellers Winning = %d", red);
-	//	DrawToChart(sc, t, 90, RGB(190, 0, 0));
+		Subgraph_Winner.SecondaryColor = RGB(140, 0, 0);
+		t.Format("Prev: %0.0f     Vol: %0.0f     Sellers %0.0f %%", sc.Volume[i-1], sc.Volume[i], (red / sc.Volume[i]) * 100);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
 	}
 }
 
