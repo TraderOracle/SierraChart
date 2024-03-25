@@ -2,149 +2,6 @@
 
 SCDLLName("Trader Oracle DLL") 
 
-void DrawToChart(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc)
-{
-	sc.Graphics.SetTextAlign(TA_NOUPDATECP);
-
-	n_ACSIL::s_GraphicsFont GraphicsFont;
-	GraphicsFont.m_Height = 16;
-	GraphicsFont.m_Weight = FW_BOLD;
-	sc.Graphics.SetTextFont(GraphicsFont);
-
-	n_ACSIL::s_GraphicsColor GraphicsColor;
-
-	GraphicsColor.SetRGB(64, 128, 0);
-	sc.Graphics.SetBackgroundColor(GraphicsColor);
-	sc.Graphics.DrawTextAt("Hello. Sierra Chart is the best.", 30, 30);
-
-	GraphicsColor.SetRGB(255, 0, 0);
-	sc.Graphics.SetBackgroundColor(GraphicsColor);
-	sc.Graphics.DrawTextAt("Test.", 30, 50);
-
-	GraphicsColor.SetRGB(255, 255, 0);
-	sc.Graphics.SetBackgroundColor(GraphicsColor);
-	sc.Graphics.DrawTextAt("Test.", 30, 70);
-
-	return;
-/*
-	s_UseTool Tool;
-	Tool.ChartNumber = sc.ChartNumber;
-	Tool.DrawingType = DRAWING_TEXT;
-	Tool.BeginValue = 95; // from bottom
-	Tool.BeginDateTime = iLeft; // from left side 90=start
-	Tool.UseRelativeVerticalValues = true;
-	Tool.Region = sc.GraphRegion;
-	Tool.TextAlignment = DT_TOP | DT_TOP;
-	Tool.Color = RGB(255, 255, 255);
-	Tool.FontBackColor = c;
-	Tool.FontSize = 12;
-	Tool.FontBold = TRUE;
-	Tool.Text = t;
-	Tool.AddMethod = UTAM_ADD_ALWAYS;
-	sc.UseTool(Tool);
-*/
-}
-
-SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
-{
-	int i = sc.Index;
-
-	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
-	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
-	SCSubgraphRef Subgraph_GreenLine = sc.Subgraph[2];
-	SCSubgraphRef Subgraph_RedLine = sc.Subgraph[3];
-	SCSubgraphRef Subgraph_Winner = sc.Subgraph[4];
-	SCSubgraphRef Subgraph_VolCurr = sc.Subgraph[5];
-	SCSubgraphRef Subgraph_VolPrev = sc.Subgraph[6];
-
-	if (sc.SetDefaults)
-	{
-		sc.GraphName = "DTS Scalper";
-		sc.GraphRegion = 1;
-		sc.AutoLoop = 1;
-		
-		return;
-	}
-
-	Subgraph_GreenLine.Name = "Green Line";
-	Subgraph_GreenLine.PrimaryColor = RGB(0, 180, 0);
-	Subgraph_GreenLine.DrawStyle = DRAWSTYLE_LINE;
-	Subgraph_GreenLine.LineWidth = 1;
-
-	Subgraph_RedLine.Name = "Red Line";
-	Subgraph_RedLine.PrimaryColor = RGB(180, 0, 0);
-	Subgraph_RedLine.DrawStyle = DRAWSTYLE_LINE;
-	Subgraph_RedLine.LineWidth = 1;
-
-	Subgraph_DotUp.Name = "Standard Buy Dot";
-	Subgraph_DotUp.PrimaryColor = RGB(0, 255, 0);
-	Subgraph_DotUp.DrawStyle = DRAWSTYLE_POINT;
-	Subgraph_DotUp.LineWidth = 3;
-	Subgraph_DotUp.DrawZeros = false;
-
-	Subgraph_DotDown.Name = "Standard Sell Dot";
-	Subgraph_DotDown.PrimaryColor = RGB(255, 0, 0);
-	Subgraph_DotDown.DrawStyle = DRAWSTYLE_POINT;
-	Subgraph_DotDown.LineWidth = 3;
-	Subgraph_DotDown.DrawZeros = false;
-
-	Subgraph_Winner.Name = "Green or Red Dominant";
-	Subgraph_Winner.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
-	Subgraph_Winner.PrimaryColor = RGB(255, 255,255);
-	Subgraph_Winner.SecondaryColorUsed = true;
-	Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
-	Subgraph_Winner.LineWidth = 12;
-	Subgraph_Winner.DrawZeros = false;
-
-	Subgraph_VolCurr.Name = "Volume Current";
-	Subgraph_VolCurr.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
-	Subgraph_VolCurr.PrimaryColor = RGB(0, 0, 0);
-	Subgraph_VolCurr.SecondaryColorUsed = true;
-	Subgraph_VolCurr.SecondaryColor = RGB(255, 255, 255);
-	Subgraph_VolCurr.LineWidth = 12;
-	Subgraph_VolCurr.DrawZeros = false;
-
-	Subgraph_VolPrev.Name = "Volume Previous";
-	Subgraph_VolPrev.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
-	Subgraph_VolPrev.PrimaryColor = RGB(0, 0, 0);
-	Subgraph_VolPrev.SecondaryColorUsed = true;
-	Subgraph_VolPrev.SecondaryColor = RGB(255, 255, 255);
-	Subgraph_VolPrev.LineWidth = 12;
-	Subgraph_VolPrev.DrawZeros = false;
-
-	double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
-	double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
-	Subgraph_DotUp[i] = green;
-	Subgraph_DotDown[i] = red;
-
-	Subgraph_GreenLine[i] = green;
-	Subgraph_RedLine[i] = red;
-
-	//sc.p_GDIFunction = DrawToChart;
-	SCString t;
-
-	//t.Format("Vol: %0.0f", sc.Volume[i]);
-	//sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 60, 90, Subgraph_VolCurr, false, t, true, 1);
-
-	//u.Format("Prev: %0.0f", sc.Volume[i-1]);
-	//sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 75, 90, Subgraph_VolPrev, false, t, true, 1);
-
-	if (green > red)
-	{
-		Subgraph_Winner.SecondaryColor = RGB(0, 140, 0);
-		t.Format("Prev: %0.0f     Vol: %0.0f     Buyers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (green / sc.Volume[i]) * 100);
-		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
-	}
-	else
-	{
-		Subgraph_Winner.SecondaryColor = RGB(140, 0, 0);
-		t.Format("Prev: %0.0f     Vol: %0.0f     Sellers %0.0f %%", sc.Volume[i-1], sc.Volume[i], (red / sc.Volume[i]) * 100);
-		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
-	}
-}
-
-#pragma region OLYMPUS
-
 #pragma region COMMON FUNCTIONS
 
 double CandleLength(SCBaseDataRef InData, int index)
@@ -423,6 +280,114 @@ void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int i
 
 #pragma endregion
 
+#pragma region DELTA INTENSITY
+
+SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
+{
+	int i = sc.Index;
+
+	SCInputRef Input_Threshold = sc.Input[0];
+	SCInputRef Input_InputDataLow = sc.Input[1];
+
+	SCSubgraphRef Subgraph_Bar = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_IntenseBar = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_Winner = sc.Subgraph[2];
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "Delta Intensity";
+		sc.GraphRegion = 1;
+		sc.AutoLoop = 1;
+
+		Input_Threshold.Name = "Bright Color Threshold";
+		Input_Threshold.SetInt(200000);
+
+		Subgraph_Bar.Name = "Green or Red Bar";
+		Subgraph_Bar.PrimaryColor = RGB(0, 140, 0);
+		Subgraph_Bar.SecondaryColorUsed = true;
+		Subgraph_Bar.SecondaryColor = RGB(140, 0, 0);
+		Subgraph_Bar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_Bar.LineWidth = 14;
+		Subgraph_Bar.AutoColoring = AUTOCOLOR_POSNEG;
+
+		Subgraph_IntenseBar.Name = "Intense Green or Red Bar";
+		Subgraph_IntenseBar.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_IntenseBar.SecondaryColorUsed = true;
+		Subgraph_IntenseBar.SecondaryColor = RGB(255, 0, 0);
+		Subgraph_IntenseBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_IntenseBar.LineWidth = 14;
+		Subgraph_IntenseBar.AutoColoring = AUTOCOLOR_POSNEG;
+
+		Subgraph_Winner.Name = "Green or Red Dominant";
+		Subgraph_Winner.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+		Subgraph_Winner.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_Winner.SecondaryColorUsed = true;
+		Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
+		Subgraph_Winner.LineWidth = 10;
+		Subgraph_Winner.DrawZeros = false;
+
+		return;
+	}
+
+	double green = sc.BidVolume[i];
+	double red = sc.AskVolume[i];
+
+	float bartime, volsec, delta, deltasec;
+
+	SCDateTime BarEndDateTime = sc.GetEndingDateTimeForBarIndex(sc.Index);
+	bartime = static_cast<float>((BarEndDateTime - sc.BaseDateTimeIn[sc.Index]).GetAsDouble());
+	if (bartime > 0)
+		volsec = (sc.Volume[i] / bartime) / 1024;
+	delta = sc.AskVolume[i] - sc.BidVolume[i];
+	deltasec = delta * volsec;
+
+	if (deltasec > Input_Threshold.GetInt())
+	{
+		Subgraph_IntenseBar[i] = deltasec;
+		Subgraph_Bar[i] = 0;
+	}
+	else
+	{
+		Subgraph_IntenseBar[i] = 0;
+		Subgraph_Bar[i] = deltasec;
+	}
+
+	SCString t = "";
+
+	if (IsRed(sc.BaseData, i) && deltasec < 0)
+	{
+		Subgraph_Winner.SecondaryColor = RGB(0, 0, 0);
+		Subgraph_Winner.PrimaryColor = RGB(0, 0, 0);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+	if (IsGreen(sc.BaseData, i) && deltasec > 0)
+	{
+		Subgraph_Winner.SecondaryColor = RGB(0, 0, 0);
+		Subgraph_Winner.PrimaryColor = RGB(0, 0, 0);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+
+	if (IsRed(sc.BaseData, i) && deltasec > 0)
+	{
+		t = "Delta Divergence";
+		Subgraph_Winner.SecondaryColor = RGB(167, 0, 0);
+		Subgraph_Winner.PrimaryColor = RGB(255, 255, 255);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+	if (IsGreen(sc.BaseData, i) && deltasec < 0)
+	{
+		t = "Delta Divergence";
+		Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
+		Subgraph_Winner.PrimaryColor = RGB(255, 255, 255);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+
+}
+
+#pragma endregion
+
+#pragma region OLYMPUS
+
 SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 {
 
@@ -694,8 +659,6 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		return;
 	}
 
-#pragma endregion
-
 	int i = sc.Index;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
@@ -705,6 +668,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
 	//int X = sc.BarIndexToXPixelCoordinate(i);
 	//int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
+
+#pragma endregion
 
 #pragma region INDICATORS
 
@@ -855,6 +820,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
+#pragma region BUY SELL PLOTS
+
 		if (IsThreeOutsideUp(sc, sc.CurrentIndex))
 			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
 		if (IsThreeOutsideDown(sc, sc.CurrentIndex))
@@ -930,7 +897,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		{
 			Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus BUY Signal at %.2d", close);
-			sc.AddMessageToLog(txt, 0);
+			//sc.AddMessageToLog(txt, 0);
 			if (i >= sc.ArraySize - 1)
 				sc.AlertWithMessage(199, "Olympus BUY Signal");
 		}
@@ -939,7 +906,6 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		{
 			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus SELL Signal at %.2d", close);
-			sc.AddMessageToLog(txt, 0);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Olympus SELL Signal");
 		}
@@ -947,27 +913,28 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_VolImbUp[i] = 0;
 		Subgraph_VolImbDown[i] = 0;
 
-		if (IsVolImbGreen(sc, sc.CurrentIndex))
+		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
 		{
 			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
-			sc.AddMessageToLog(txt, 0);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(197, "Volume Imbalance BUY");
 		}
 
-		if (IsVolImbRed(sc, sc.CurrentIndex))
+		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
 		{
 			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
-			sc.AddMessageToLog(txt, 0);
+			//sc.AddMessageToLog(txt, 0);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
 
 	}
+
+#pragma endregion
 
 }
 
@@ -1576,3 +1543,150 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
+#pragma region DTS SCALPER
+
+SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
+{
+	int i = sc.Index;
+
+	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_GreenLine = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_RedLine = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_Winner = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_VolCurr = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_VolPrev = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_Close = sc.Subgraph[7];
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "DTS Scalper";
+		sc.GraphRegion = 1;
+		sc.AutoLoop = 1;
+
+		return;
+	}
+
+	Subgraph_Close.Name = "Close";
+	Subgraph_Close.DrawStyle = DRAWSTYLE_LINE;
+	Subgraph_Close.PrimaryColor = RGB(128, 0, 0);
+	Subgraph_Close.DrawZeros = true;
+
+	Subgraph_GreenLine.Name = "Green Line";
+	Subgraph_GreenLine.PrimaryColor = RGB(0, 180, 0);
+	Subgraph_GreenLine.DrawStyle = DRAWSTYLE_LINE;
+	Subgraph_GreenLine.LineWidth = 1;
+
+	Subgraph_RedLine.Name = "Red Line";
+	Subgraph_RedLine.PrimaryColor = RGB(180, 0, 0);
+	Subgraph_RedLine.DrawStyle = DRAWSTYLE_LINE;
+	Subgraph_RedLine.LineWidth = 1;
+
+	Subgraph_DotUp.Name = "Standard Buy Dot";
+	Subgraph_DotUp.PrimaryColor = RGB(0, 255, 0);
+	Subgraph_DotUp.DrawStyle = DRAWSTYLE_POINT;
+	Subgraph_DotUp.LineWidth = 3;
+	Subgraph_DotUp.DrawZeros = false;
+
+	Subgraph_DotDown.Name = "Standard Sell Dot";
+	Subgraph_DotDown.PrimaryColor = RGB(255, 0, 0);
+	Subgraph_DotDown.DrawStyle = DRAWSTYLE_POINT;
+	Subgraph_DotDown.LineWidth = 3;
+	Subgraph_DotDown.DrawZeros = false;
+
+	Subgraph_Winner.Name = "Green or Red Dominant";
+	Subgraph_Winner.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_Winner.PrimaryColor = RGB(255, 255, 255);
+	Subgraph_Winner.SecondaryColorUsed = true;
+	Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
+	Subgraph_Winner.LineWidth = 12;
+	Subgraph_Winner.DrawZeros = false;
+
+	Subgraph_VolCurr.Name = "Volume Current";
+	Subgraph_VolCurr.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_VolCurr.PrimaryColor = RGB(0, 0, 0);
+	Subgraph_VolCurr.SecondaryColorUsed = true;
+	Subgraph_VolCurr.SecondaryColor = RGB(255, 255, 255);
+	Subgraph_VolCurr.LineWidth = 12;
+	Subgraph_VolCurr.DrawZeros = false;
+
+	Subgraph_VolPrev.Name = "Volume Previous";
+	Subgraph_VolPrev.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+	Subgraph_VolPrev.PrimaryColor = RGB(0, 0, 0);
+	Subgraph_VolPrev.SecondaryColorUsed = true;
+	Subgraph_VolPrev.SecondaryColor = RGB(255, 255, 255);
+	Subgraph_VolPrev.LineWidth = 12;
+	Subgraph_VolPrev.DrawZeros = false;
+
+	//double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
+	//double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
+	double green = sc.BidVolume[i];
+	double red = sc.AskVolume[i];
+
+	Subgraph_DotUp[i] = green;
+	Subgraph_DotDown[i] = red;
+
+	Subgraph_GreenLine[i] = green;
+	Subgraph_RedLine[i] = red;
+
+	//sc.p_GDIFunction = DrawToChart;
+	SCString t;
+
+	if (green > red)
+	{
+		Subgraph_Winner.SecondaryColor = RGB(0, 140, 0);
+		t.Format("Prev: %0.0f     Vol: %0.0f     Buyers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (green / sc.Volume[i]) * 100);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+	else
+	{
+		Subgraph_Winner.SecondaryColor = RGB(140, 0, 0);
+		t.Format("Prev: %0.0f     Vol: %0.0f     Sellers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (red / sc.Volume[i]) * 100);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+	}
+}
+
+#pragma endregion
+
+void DrawToChart(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc)
+{
+	sc.Graphics.SetTextAlign(TA_NOUPDATECP);
+
+	n_ACSIL::s_GraphicsFont GraphicsFont;
+	GraphicsFont.m_Height = 16;
+	GraphicsFont.m_Weight = FW_BOLD;
+	sc.Graphics.SetTextFont(GraphicsFont);
+
+	n_ACSIL::s_GraphicsColor GraphicsColor;
+
+	GraphicsColor.SetRGB(64, 128, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Hello. Sierra Chart is the best.", 30, 30);
+
+	GraphicsColor.SetRGB(255, 0, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Test.", 30, 50);
+
+	GraphicsColor.SetRGB(255, 255, 0);
+	sc.Graphics.SetBackgroundColor(GraphicsColor);
+	sc.Graphics.DrawTextAt("Test.", 30, 70);
+
+	return;
+	/*
+		s_UseTool Tool;
+		Tool.ChartNumber = sc.ChartNumber;
+		Tool.DrawingType = DRAWING_TEXT;
+		Tool.BeginValue = 95; // from bottom
+		Tool.BeginDateTime = iLeft; // from left side 90=start
+		Tool.UseRelativeVerticalValues = true;
+		Tool.Region = sc.GraphRegion;
+		Tool.TextAlignment = DT_TOP | DT_TOP;
+		Tool.Color = RGB(255, 255, 255);
+		Tool.FontBackColor = c;
+		Tool.FontSize = 12;
+		Tool.FontBold = TRUE;
+		Tool.Text = t;
+		Tool.AddMethod = UTAM_ADD_ALWAYS;
+		sc.UseTool(Tool);
+	*/
+}
