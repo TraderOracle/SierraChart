@@ -341,7 +341,7 @@ SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 	delta = sc.AskVolume[i] - sc.BidVolume[i];
 	deltasec = delta * volsec;
 
-	if (deltasec > Input_Threshold.GetInt())
+	if (abs(deltasec) > Input_Threshold.GetInt())
 	{
 		Subgraph_IntenseBar[i] = deltasec;
 		Subgraph_Bar[i] = 0;
