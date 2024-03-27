@@ -1,6 +1,6 @@
 #include "sierrachart.h" 
 
-SCDLLName("Trader Oracle DLL")
+SCDLLName("TO Robots DLL")
 
 #pragma region COMMON FUNCTIONS
 
@@ -280,29 +280,97 @@ void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int i
 
 #pragma endregion
 
+void DrawStatusText(SCStudyInterfaceRef sc)
+{
+	return;
+
+	SCString sF;
+
+	int& r_DrawingNumber = sc.GetPersistentInt(5);
+	SCString& r_CurrentOnScreenMessage = sc.GetPersistentSCString(1);
+	
+	s_SCPositionData SCPositionData;
+	if (sc.GetTradePosition(SCPositionData))
+	{
+		sF.Format("GoldBug Bot - Version 1.0 \nDaily PNL: %02f, Open PNL: %02f \n",
+			SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
+		sF.Append(r_CurrentOnScreenMessage);
+	}
+
+	//n_ACSIL::s_TradeAccountDataFields TradeAccountDataFields;
+	//if (sc.GetTradeAccountData(TradeAccountDataFields, sc.SelectedTradeAccount))
+	//{
+	//	double AccountValue = TradeAccountDataFields.m_AccountValue;
+	//	double dailyPnl = TradeAccountDataFields.m_DailyProfitLoss;
+	//	double openPnl = TradeAccountDataFields.m_OpenPositionsProfitLoss;
+	//	double cash = TradeAccountDataFields.m_CurrentCashBalance;
+
+	//	sF.Format("GoldBug Bot - version 1.0 \nDaily PNL: %0f, Open PNL: %0f \nCash available: %0f \n",
+	//		dailyPnl, openPnl, cash);
+	//	sF.Append(r_CurrentOnScreenMessage);
+	//}
+
+	s_UseTool Tool;
+	Tool.Clear();
+	Tool.ChartNumber = sc.ChartNumber;
+	Tool.DrawingType = DRAWING_TEXT;
+	Tool.BeginDateTime = 5;
+	Tool.Region = sc.GraphRegion;
+	Tool.BeginValue = 95;
+	Tool.UseRelativeVerticalValues = true;
+	Tool.Color = RGB(255,255,255);
+	Tool.FontBold = false;
+
+	Tool.Text = sF;
+	Tool.FontSize = 10;
+	Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+	Tool.ReverseTextColor = false;
+
+	if (r_DrawingNumber != 0)
+		Tool.LineNumber = r_DrawingNumber;
+
+	if (sc.UseTool(Tool))
+		r_DrawingNumber = Tool.LineNumber;
+}
+
+void LogInfo(SCStudyInterfaceRef sc)
+{
+	SCString& r_CurrentOnScreenMessage = sc.GetPersistentSCString(1);
+
+	DrawStatusText(sc);
+	sc.AddMessageToLog(r_CurrentOnScreenMessage, 0);
+}
+
 #pragma region ORDER MANIPULATION
 
 int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 {
+	int iR;
 	s_SCPositionData PositionData;
 	s_SCNewOrder NewOrder;
-	
+
 	sc.GetTradePosition(PositionData);
 
-	if (PositionData.PositionQuantity >= MaxPos)
-	{
-		// add log
-		return 0;
-	}
-
-	NewOrder.OrderQuantity = PositionData.PositionQuantity;
+	NewOrder.OrderQuantity = 1; // PositionData.PositionQuantity;
 	NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
 	NewOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
 
 	if (iDirection == 1)
-		return static_cast<int>(sc.BuyEntry(NewOrder));
+		iR = static_cast<int>(sc.BuyEntry(NewOrder));
 	else
-		return static_cast<int>(sc.SellEntry(NewOrder));
+		iR = static_cast<int>(sc.SellEntry(NewOrder));
+
+	if (iR > 0)//order was accepted
+	{
+		
+	}
+	else//order error
+	{
+		if (sc.Index == sc.ArraySize - 1)
+		{
+			// log error
+		}
+	}
 
 	return 0;
 }
@@ -368,6 +436,8 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_HullATR = sc.Subgraph[20];
 	SCSubgraphRef Subgraph_KAMA = sc.Subgraph[21];
 
+	SCSubgraphRef Subgraph_Txt = sc.Subgraph[22];
+
 	SCFloatArrayRef Array_TrueRange = Subgraph_SuperTrend.Arrays[0];
 	SCFloatArrayRef Array_AvgTrueRange = Subgraph_SuperTrend.Arrays[1];
 	SCFloatArrayRef Array_UpperBandBasic = Subgraph_SuperTrend.Arrays[2];
@@ -386,11 +456,11 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		sc.AutoLoop = 1;
 
 		Input_Enabled.Name = "Enabled";
-		Input_Enabled.SetYesNo(0);
+		Input_Enabled.SetYesNo(1);
 		Input_Enabled.SetDescription("This input enables the study and allows it to function. Otherwise, it does nothing.");
 
 		Input_Simulation.Name = "Simulation Mode";
-		Input_Simulation.SetYesNo(1);
+		Input_Simulation.SetYesNo(0);
 		Input_Simulation.SetDescription("No real orders are sent if this is enabled");
 
 		Input_TradeBuySell.Name = "Standard Buy/Sell";
@@ -428,10 +498,10 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_UseWaddah.SetYesNo(1);
 
 		Input_UseMacd.Name = "Use MACD";
-		Input_UseMacd.SetYesNo(0);
+		Input_UseMacd.SetYesNo(1);
 
 		Input_UseSar.Name = "Use Parabolic Sar";
-		Input_UseSar.SetYesNo(0);
+		Input_UseSar.SetYesNo(1);
 
 		Input_UseSuperTrend.Name = "Use Supertrend";
 		Input_UseSuperTrend.SetYesNo(0);
@@ -505,33 +575,33 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Subgraph_SuperTrend.Name = "SuperTrend";
 		Subgraph_SuperTrend.DrawStyle = DRAWSTYLE_IGNORE;
 
+		Subgraph_Txt.Name = "Text Output 1";
+		Subgraph_Txt.DrawStyle = DRAWSTYLE_TEXT;
+		Subgraph_Txt.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_Txt.LineWidth = 10;
+		Subgraph_Txt.DrawZeros = false;
+
 		// This is false by default. Orders will be simulated.
 		sc.SendOrdersToTradeService = false;
-
 		sc.AllowMultipleEntriesInSameDirection = true;
-
-		//This must be equal to or greater than the order quantities you will be  submitting orders for.
 		sc.MaximumPositionAllowed = 10000;
-
 		sc.SupportReversals = true;
 		sc.AllowOppositeEntryWithOpposingPositionOrOrders = true;
-
 		//  This variable controls whether to use or not use attached orders that are configured on the Trade Window for the chart.
-		sc.SupportAttachedOrdersForTrading = false;
-
+		sc.SupportAttachedOrdersForTrading = true;
 		//This variable controls whether to use the "Use Attached Orders" setting on the Trade Window for the chart
-		sc.UseGUIAttachedOrderSetting = false;
-
-		sc.CancelAllOrdersOnEntriesAndReversals = false;
+		sc.UseGUIAttachedOrderSetting = true;
+		sc.CancelAllOrdersOnEntries = false;
+		sc.CancelAllOrdersOnReversals = true;
 		sc.AllowEntryWithWorkingOrders = true;
 		sc.CancelAllWorkingOrdersOnExit = true;
 		sc.AllowOnlyOneTradePerBar = true;
-
-		//This needs to be set to true when a trading study uses trading functions.
 		sc.MaintainTradeStatisticsAndTradesData = true;
 
 		return;
 	}
+
+#pragma endregion
 
 	sc.SendOrdersToTradeService = Input_Simulation.GetYesNo();
 	sc.MaximumPositionAllowed = Input_MaxPositions.GetInt();
@@ -542,16 +612,36 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	if (sc.IsFullRecalculation)
 		return;
 
+	SCString sF;
+	SCString& r_Msg = sc.GetPersistentSCString(1);
+
+	s_SCPositionData SCPositionData;
+	if (sc.GetTradePosition(SCPositionData))
+	{
+		double totalPNL = abs(SCPositionData.DailyProfitLoss) + abs(SCPositionData.OpenProfitLoss);
+		if (totalPNL > Input_MaxLoss.GetInt())
+		{
+			r_Msg = "Way to go shitter, you exceeded your max loss";
+			return;
+		}
+		if (totalPNL > Input_MaxProfit.GetInt())
+		{
+			r_Msg = "Congrats, you achieved your profit target";
+			return;
+		}
+		sF.Format("GoldBug - Version 1.0 \nDaily PNL: %02f, Open PNL: %02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
+		sF.Append(r_Msg);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 5, 90, Subgraph_Txt, true, sF, true, 1);
+	}
+
 	int i = sc.Index;
 	int iPos = 0;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
 	SCBaseDataRef in = sc.BaseData;
-	double close = in[SC_LAST][i];
+	double close = in[SC_OPEN][i];
 	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
 	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
-
-#pragma endregion
 
 #pragma region INDICATORS
 
@@ -692,10 +782,21 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
-		s_SCPositionData PositionData;
-		sc.GetTradePosition(PositionData);
+		if (!sc.ChartTradeModeEnabled)
+		{
+			r_Msg = "Chart Trade Mode is not Enabled";
+			LogInfo(sc);
+			return;
+		}
 
-#pragma region BUY SELL PLOTS
+		if (sc.TradingIsLocked)
+		{
+			r_Msg = "Trading is locked, you fucking idiot";
+			LogInfo(sc);
+			return;
+		}
+
+#pragma region BUY SELL
 
 		bool bShowUp = true;
 		bool bShowDown = true;
@@ -726,30 +827,35 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			)
 			bShowDown = false;
 
-		if (BarCloseStatus)
+		if (BarCloseStatus && bShowUp)
 		{
 			if (Input_TradeBuySell.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, 1, Input_MaxPositions.GetInt());
-			txt.Format("Olympus BUY Signal at %.2d", close);
+			txt.Format("Standard BUY Signal at %.2f", sc.Low[sc.Index]);
+			r_Msg = txt;
+			LogInfo(sc);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(199, "Olympus BUY Signal");
+				sc.AlertWithMessage(199, "Standard BUY Signal");
 		}
 
-		if (BarCloseStatus)
+		if (BarCloseStatus && bShowDown)
 		{
 			if (Input_TradeBuySell.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, -1, Input_MaxPositions.GetInt());
-			txt.Format("Olympus SELL Signal at %.2d", close);
+			txt.Format("Standard SELL Signal at %.2f", sc.Low[sc.Index]);
+			r_Msg = txt;
+			LogInfo(sc);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(200, "Olympus SELL Signal");
+				sc.AlertWithMessage(200, "Standard SELL Signal");
 		}
 
 		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
 		{
 			if (Input_TradeImbalance.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, 1, Input_MaxPositions.GetInt());
-
-			txt.Format("Volume Imbalance BUY at %.2d", close);
+			txt.Format("Volume Imbalance BUY at %.2f", sc.Low[sc.Index]);
+			r_Msg = txt;
+			LogInfo(sc);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(197, "Volume Imbalance BUY");
 		}
@@ -758,8 +864,9 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		{
 			if (Input_TradeImbalance.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, -1, Input_MaxPositions.GetInt());
-			txt.Format("Volume Imbalance SELL at %.2d", close);
-			//sc.AddMessageToLog(txt, 0);
+			txt.Format("Volume Imbalance SELL at %.2f", sc.Low[sc.Index]);
+			r_Msg = txt;
+			LogInfo(sc);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
