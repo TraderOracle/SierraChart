@@ -278,8 +278,6 @@ void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int i
 	sc.UseTool(Tool);
 }
 
-#pragma endregion
-
 void DrawStatusText(SCStudyInterfaceRef sc)
 {
 	return;
@@ -288,7 +286,7 @@ void DrawStatusText(SCStudyInterfaceRef sc)
 
 	int& r_DrawingNumber = sc.GetPersistentInt(5);
 	SCString& r_CurrentOnScreenMessage = sc.GetPersistentSCString(1);
-	
+
 	s_SCPositionData SCPositionData;
 	if (sc.GetTradePosition(SCPositionData))
 	{
@@ -318,7 +316,7 @@ void DrawStatusText(SCStudyInterfaceRef sc)
 	Tool.Region = sc.GraphRegion;
 	Tool.BeginValue = 95;
 	Tool.UseRelativeVerticalValues = true;
-	Tool.Color = RGB(255,255,255);
+	Tool.Color = RGB(255, 255, 255);
 	Tool.FontBold = false;
 
 	Tool.Text = sF;
@@ -341,24 +339,35 @@ void LogInfo(SCStudyInterfaceRef sc)
 	sc.AddMessageToLog(r_CurrentOnScreenMessage, 0);
 }
 
+#pragma endregion
+
 #pragma region ORDER MANIPULATION
 
 int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 {
+	int& orderBar = sc.GetPersistentInt(2);
+	if (sc.Index == orderBar)
+		return -3;
+
 	int iR;
 	s_SCPositionData PositionData;
-	s_SCNewOrder NewOrder;
 
 	sc.GetTradePosition(PositionData);
 
-	NewOrder.OrderQuantity = 1; // PositionData.PositionQuantity;
-	NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
-	NewOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
+	if (PositionData.PositionQuantity == 0)
+	{
+		s_SCNewOrder NewOrder;
+		NewOrder.OrderQuantity = 1;
+		NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+		NewOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
 
-	if (iDirection == 1)
-		iR = static_cast<int>(sc.BuyEntry(NewOrder));
-	else
-		iR = static_cast<int>(sc.SellEntry(NewOrder));
+		if (iDirection == 1)
+			iR = static_cast<int>(sc.BuyEntry(NewOrder));
+		else
+			iR = static_cast<int>(sc.SellEntry(NewOrder));
+		sc.AddMessageToLog("Submitted trade order", 0);
+		return -2;
+	}
 
 	if (iR > 0)//order was accepted
 	{
@@ -459,9 +468,9 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_Enabled.SetYesNo(1);
 		Input_Enabled.SetDescription("This input enables the study and allows it to function. Otherwise, it does nothing.");
 
-		Input_Simulation.Name = "Simulation Mode";
+		Input_Simulation.Name = "Send Orders To Trade Service";
 		Input_Simulation.SetYesNo(0);
-		Input_Simulation.SetDescription("No real orders are sent if this is enabled");
+		Input_Simulation.SetDescription("Send real orders to your trading service");
 
 		Input_TradeBuySell.Name = "Standard Buy/Sell";
 		Input_TradeBuySell.SetYesNo(1);
@@ -581,16 +590,13 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Subgraph_Txt.LineWidth = 10;
 		Subgraph_Txt.DrawZeros = false;
 
-		// This is false by default. Orders will be simulated.
 		sc.SendOrdersToTradeService = false;
 		sc.AllowMultipleEntriesInSameDirection = true;
 		sc.MaximumPositionAllowed = 10000;
 		sc.SupportReversals = true;
 		sc.AllowOppositeEntryWithOpposingPositionOrOrders = true;
-		//  This variable controls whether to use or not use attached orders that are configured on the Trade Window for the chart.
 		sc.SupportAttachedOrdersForTrading = true;
-		//This variable controls whether to use the "Use Attached Orders" setting on the Trade Window for the chart
-		sc.UseGUIAttachedOrderSetting = true;
+		sc.UseGUIAttachedOrderSetting = false;
 		sc.CancelAllOrdersOnEntries = false;
 		sc.CancelAllOrdersOnReversals = true;
 		sc.AllowEntryWithWorkingOrders = true;
@@ -612,8 +618,12 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	if (sc.IsFullRecalculation)
 		return;
 
+	if (sc.LastCallToFunction)
+		return;
+
 	SCString sF;
 	SCString& r_Msg = sc.GetPersistentSCString(1);
+	int& currBar = sc.GetPersistentInt(1);
 
 	s_SCPositionData SCPositionData;
 	if (sc.GetTradePosition(SCPositionData))
@@ -629,12 +639,13 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			r_Msg = "Congrats, you achieved your profit target";
 			return;
 		}
-		sF.Format("GoldBug - Version 1.0 \nDaily PNL: %02f, Open PNL: %02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
+		sF.Format("GoldBug - Version 1.0 \nDaily PNL: %.02f, Open PNL: %.02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
 		sF.Append(r_Msg);
 		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 5, 90, Subgraph_Txt, true, sF, true, 1);
 	}
 
 	int i = sc.Index;
+	currBar = sc.Index;
 	int iPos = 0;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
