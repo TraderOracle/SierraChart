@@ -289,9 +289,11 @@ SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 	SCInputRef Input_Threshold = sc.Input[0];
 	SCInputRef Input_InputDataLow = sc.Input[1];
 
-	SCSubgraphRef Subgraph_Bar = sc.Subgraph[0];
-	SCSubgraphRef Subgraph_IntenseBar = sc.Subgraph[1];
-	SCSubgraphRef Subgraph_Winner = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_GreenBar = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_IntenseGreenBar = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_RedBar = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_IntenseRedBar = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_Winner = sc.Subgraph[4];
 
 	if (sc.SetDefaults)
 	{
@@ -300,23 +302,27 @@ SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 		sc.AutoLoop = 1;
 
 		Input_Threshold.Name = "Bright Color Threshold";
-		Input_Threshold.SetInt(200000);
+		Input_Threshold.SetInt(450);
 
-		Subgraph_Bar.Name = "Green or Red Bar";
-		Subgraph_Bar.PrimaryColor = RGB(0, 140, 0);
-		Subgraph_Bar.SecondaryColorUsed = true;
-		Subgraph_Bar.SecondaryColor = RGB(140, 0, 0);
-		Subgraph_Bar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
-		Subgraph_Bar.LineWidth = 14;
-		Subgraph_Bar.AutoColoring = AUTOCOLOR_POSNEG;
+		Subgraph_GreenBar.Name = "Green Bar";
+		Subgraph_GreenBar.PrimaryColor = RGB(0, 140, 0);
+		Subgraph_GreenBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_GreenBar.LineWidth = 17;
 
-		Subgraph_IntenseBar.Name = "Intense Green or Red Bar";
-		Subgraph_IntenseBar.PrimaryColor = RGB(0, 255, 0);
-		Subgraph_IntenseBar.SecondaryColorUsed = true;
-		Subgraph_IntenseBar.SecondaryColor = RGB(255, 0, 0);
-		Subgraph_IntenseBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
-		Subgraph_IntenseBar.LineWidth = 14;
-		Subgraph_IntenseBar.AutoColoring = AUTOCOLOR_POSNEG;
+		Subgraph_RedBar.Name = "Red Bar";
+		Subgraph_RedBar.PrimaryColor = RGB(140, 0, 0);
+		Subgraph_RedBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_RedBar.LineWidth = 17;
+
+		Subgraph_IntenseGreenBar.Name = "Intense Green Bar";
+		Subgraph_IntenseGreenBar.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_IntenseGreenBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_IntenseGreenBar.LineWidth = 17;
+
+		Subgraph_IntenseRedBar.Name = "Intense Red Bar";
+		Subgraph_IntenseRedBar.PrimaryColor = RGB(255, 0, 0);
+		Subgraph_IntenseRedBar.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+		Subgraph_IntenseRedBar.LineWidth = 17;
 
 		Subgraph_Winner.Name = "Green or Red Dominant";
 		Subgraph_Winner.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
@@ -332,49 +338,69 @@ SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 	double green = sc.BidVolume[i];
 	double red = sc.AskVolume[i];
 
-	float bartime, volsec, delta, deltasec;
+	float volsec = 1;
+	float minDelta = sc.BaseData[SC_ASKBID_DIFF_LOW][sc.Index];
+	float maxDelta = sc.BaseData[SC_ASKBID_DIFF_HIGH][sc.Index];
 
-	SCDateTime BarEndDateTime = sc.GetEndingDateTimeForBarIndex(sc.Index);
-	bartime = static_cast<float>((BarEndDateTime - sc.BaseDateTimeIn[sc.Index]).GetAsDouble());
-	if (bartime > 0)
-		volsec = (sc.Volume[i] / bartime) / 1024;
-	delta = sc.AskVolume[i] - sc.BidVolume[i];
-	deltasec = delta * volsec;
+	//SCDateTime BarEndDateTime = sc.GetEndingDateTimeForBarIndex(sc.Index);
+	//float bartime = static_cast<float>((BarEndDateTime - sc.BaseDateTimeIn[sc.Index] + SCDateTime::MICROSECONDS(1)).GetAsDouble());
+	//if (bartime > 0)
+	//	volsec = (sc.Volume[i] / bartime);
 
-	if (abs(deltasec) > Input_Threshold.GetInt())
+	float delta = sc.AskVolume[i] - sc.BidVolume[i];
+	float deltaPer = delta > 0 ? (delta / maxDelta) : (delta / minDelta);
+	float deltaIntense = abs((delta * deltaPer) * volsec);
+
+	if (deltaIntense > Input_Threshold.GetInt())
 	{
-		Subgraph_IntenseBar[i] = deltasec;
-		Subgraph_Bar[i] = 0;
+		if (delta > 0)
+		{
+			Subgraph_IntenseGreenBar[i] = deltaIntense;
+			Subgraph_GreenBar[i] = 0;
+		}
+		else
+		{
+			Subgraph_IntenseRedBar[i] = deltaIntense;
+			Subgraph_RedBar[i] = 0;
+		}
 	}
 	else
 	{
-		Subgraph_IntenseBar[i] = 0;
-		Subgraph_Bar[i] = deltasec;
+		if (delta > 0)
+		{
+			Subgraph_IntenseGreenBar[i] = 0;
+			Subgraph_GreenBar[i] = deltaIntense;
+		}
+		else
+		{
+			Subgraph_IntenseRedBar[i] = 0;
+			Subgraph_RedBar[i] = deltaIntense;
+		}
 	}
 
 	SCString t = "";
 
-	if (IsRed(sc.BaseData, i) && deltasec < 0)
+	if (IsRed(sc.BaseData, i) && delta < 0)
 	{
 		Subgraph_Winner.SecondaryColor = RGB(0, 0, 0);
 		Subgraph_Winner.PrimaryColor = RGB(0, 0, 0);
 		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
 	}
-	if (IsGreen(sc.BaseData, i) && deltasec > 0)
+	if (IsGreen(sc.BaseData, i) && delta > 0)
 	{
 		Subgraph_Winner.SecondaryColor = RGB(0, 0, 0);
 		Subgraph_Winner.PrimaryColor = RGB(0, 0, 0);
 		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
 	}
 
-	if (IsRed(sc.BaseData, i) && deltasec > 0)
+	if (IsRed(sc.BaseData, i) && delta > 0)
 	{
 		t = "Delta Divergence";
 		Subgraph_Winner.SecondaryColor = RGB(167, 0, 0);
 		Subgraph_Winner.PrimaryColor = RGB(255, 255, 255);
 		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
 	}
-	if (IsGreen(sc.BaseData, i) && deltasec < 0)
+	if (IsGreen(sc.BaseData, i) && delta < 0)
 	{
 		t = "Delta Divergence";
 		Subgraph_Winner.SecondaryColor = RGB(0, 167, 0);
@@ -823,18 +849,39 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 #pragma region BUY SELL PLOTS
 
 		if (IsThreeOutsideUp(sc, sc.CurrentIndex))
+		{
 			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
+			Subgraph_3oU[i] = sc.Low[i];
+		}
+			
 		if (IsThreeOutsideDown(sc, sc.CurrentIndex))
+		{
 			DrawText(sc, Subgraph_3oD, "3oD", 0, 5);
+			Subgraph_3oD[i] = sc.Low[i];
+		}
+			
 		if (IsTweezerTop(sc, sc.CurrentIndex, UpperBand))
+		{
 			DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
+			Subgraph_EqualH[i] = sc.Low[i];
+		}
+			
 		if (IsTweezerBottom(sc, sc.CurrentIndex, LowerBand))
+		{
 			DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
-
+			Subgraph_EqualL[i] = sc.Low[i];
+		}
+			
 		if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, UpperBand, sc.TickSize))
+		{
 			DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
+			Subgraph_Tramp[i] = sc.Low[i];
+		}
 		else if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, LowerBand, sc.TickSize))
+		{
 			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
+			Subgraph_Tramp[i] = sc.Low[i];
+		}
 		
 		if (Input_BarColor.GetIndex() != 0)
 			sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
@@ -915,7 +962,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
 		{
-			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(64, 85, 245), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
 			if (sc.IsNewBar(i))
@@ -924,7 +971,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
 		{
-			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], COLOR_PURPLE, 2, LINESTYLE_SOLID, false, false, "");
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(64, 85, 245), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
@@ -935,6 +982,20 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	}
 
 #pragma endregion
+
+	//STARTUPINFO si;
+	//PROCESS_INFORMATION pi;
+
+	//CreateProcess("notepad.exe",   // No module name (use command line)
+	//	NULL,        // Command line
+	//	NULL,           // Process handle not inheritable
+	//	NULL,           // Thread handle not inheritable
+	//	FALSE,          // Set handle inheritance to FALSE
+	//	0,              // No creation flags
+	//	NULL,           // Use parent's environment block
+	//	NULL,           // Use parent's starting directory 
+	//	&si,            // Pointer to STARTUPINFO structure
+	//	&pi);
 
 }
 
@@ -1618,10 +1679,10 @@ SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 	Subgraph_VolPrev.LineWidth = 12;
 	Subgraph_VolPrev.DrawZeros = false;
 
-	//double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
-	//double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
-	double green = sc.BidVolume[i];
-	double red = sc.AskVolume[i];
+	double green = sc.Volume[i] * (sc.Close[i] - sc.Low[i]) / (sc.High[i] - sc.Low[i]);
+	double red = sc.Volume[i] * (sc.High[i] - sc.Close[i]) / (sc.High[i] - sc.Low[i]);
+	green += sc.BidVolume[i];
+	red += sc.AskVolume[i];
 
 	Subgraph_DotUp[i] = green;
 	Subgraph_DotDown[i] = red;
@@ -1636,13 +1697,13 @@ SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 	{
 		Subgraph_Winner.SecondaryColor = RGB(0, 140, 0);
 		t.Format("Prev: %0.0f     Vol: %0.0f     Buyers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (green / sc.Volume[i]) * 100);
-		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 10, 90, Subgraph_Winner, false, t, true, 1);
 	}
 	else
 	{
 		Subgraph_Winner.SecondaryColor = RGB(140, 0, 0);
 		t.Format("Prev: %0.0f     Vol: %0.0f     Sellers %0.0f %%", sc.Volume[i - 1], sc.Volume[i], (red / sc.Volume[i]) * 100);
-		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 90, 90, Subgraph_Winner, false, t, true, 1);
+		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 10, 90, Subgraph_Winner, false, t, true, 1);
 	}
 }
 
@@ -1690,3 +1751,4 @@ void DrawToChart(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc)
 		sc.UseTool(Tool);
 	*/
 }
+
