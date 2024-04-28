@@ -962,7 +962,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
 		{
-			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(64, 85, 245), 4, LINESTYLE_SOLID, false, false, "");
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
 			if (sc.IsNewBar(i))
@@ -971,7 +971,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
 		{
-			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(64, 85, 245), 4, LINESTYLE_SOLID, false, false, "");
+			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
@@ -1603,6 +1603,148 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 }
 
 #pragma endregion
+
+SCSFExport scsf_LindaPullback(SCStudyInterfaceRef sc)
+{
+#pragma region INPUTS
+
+	int i = sc.Index;
+
+	int& iHigh = sc.GetPersistentInt(1);
+	int& iLow = sc.GetPersistentInt(2);
+	int& iH = sc.GetPersistentInt(3);
+	int& iL = sc.GetPersistentInt(4);
+	int& iHPainted = sc.GetPersistentInt(5);
+	int& iLPainted = sc.GetPersistentInt(6);
+
+	SCSubgraphRef Subgraph_MACD = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_MA = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_Calc = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_Dot = sc.Subgraph[3];
+	SCSubgraphRef Subgraph_BgGreen = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_BgRed = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_Txt = sc.Subgraph[6];
+
+#pragma endregion
+
+#pragma region DEFAULTS
+
+	if (sc.SetDefaults)
+	{
+		sc.GraphName = "Linda Pullback";
+		sc.GraphRegion = 1;
+		sc.AutoLoop = 1;
+
+		Subgraph_Calc.Name = "Calc";
+		Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_MACD.Name = "MACD";
+		Subgraph_MACD.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_MACD.LineWidth = 1;
+		Subgraph_MACD.AutoColoring = AUTOCOLOR_SLOPE;
+		Subgraph_MACD.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_MACD.SecondaryColor = RGB(255, 0, 0);
+		Subgraph_MACD.DrawZeros = true;
+
+		Subgraph_MA.Name = "MA";
+		Subgraph_MA.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_MA.LineWidth = 2;
+		Subgraph_MA.AutoColoring = AUTOCOLOR_SLOPE;
+		Subgraph_MA.PrimaryColor = RGB(0, 255, 0);
+		Subgraph_MA.SecondaryColor = RGB(255, 0, 0);
+		Subgraph_MA.DrawZeros = true;
+
+		Subgraph_BgGreen.Name = "Green Background";
+		Subgraph_BgGreen.DrawStyle = DRAWSTYLE_BACKGROUND;
+		Subgraph_BgGreen.LineWidth = 15;
+		Subgraph_BgGreen.PrimaryColor = RGB(0, 120, 0);
+		Subgraph_BgGreen.DrawZeros = true;
+
+		Subgraph_BgRed.Name = "Red Background";
+		Subgraph_BgRed.DrawStyle = DRAWSTYLE_BACKGROUND;
+		Subgraph_BgRed.LineWidth = 15;
+		Subgraph_BgRed.PrimaryColor = RGB(120, 0, 0);
+		Subgraph_BgRed.DrawZeros = true;
+
+		Subgraph_Dot.Name = "Dots";
+		Subgraph_Dot.DrawStyle = DRAWSTYLE_HIDDEN;
+		Subgraph_Dot.LineWidth = 5;
+		Subgraph_Dot.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_Dot.DrawZeros = true;
+
+		Subgraph_Txt.Name = "Text";
+		Subgraph_Txt.DrawStyle = DRAWSTYLE_HIDDEN; //DRAWSTYLE_CUSTOM_VALUE_AT_Y;
+		Subgraph_Txt.LineWidth = 9;
+		Subgraph_Txt.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_Txt.DrawZeros = true;
+
+		return;
+	}
+
+#pragma endregion
+
+	if (sc.IsFullRecalculation && sc.Index == 0)
+	{
+		sc.GetPersistentInt(1) = 0;
+		sc.GetPersistentInt(2) = 0;
+		sc.GetPersistentInt(3) = 0;
+		sc.GetPersistentInt(4) = 0;
+		sc.GetPersistentInt(5) = 0;
+		sc.GetPersistentInt(6) = 0;
+	}
+
+	sc.MACD(sc.BaseData[SC_LAST], Subgraph_Calc, i, 3, 10, 16, MOVAVGTYPE_SIMPLE);
+
+	float MACD = Subgraph_Calc[i];
+	float MACDMA = Subgraph_Calc.Arrays[2][i];
+	float MACDDifference = Subgraph_Calc.Arrays[3][i];
+
+	Subgraph_MACD[i] = MACD;
+	Subgraph_MA[i] = MACDMA;
+
+	// MACD above the MA
+	if (Subgraph_MACD[i] > Subgraph_MA[i])
+	{
+		if (Subgraph_MACD[i] > iH)
+			iH = Subgraph_MACD[i];
+
+		if (Subgraph_MACD[i] > iHigh && iH != -999 && iHPainted == 0)
+		{
+			Subgraph_BgGreen[i] = MACD;
+			iHPainted = 1;
+		}
+		else
+			Subgraph_BgGreen[i] = 0;
+	}
+
+	// MACD below MA
+	if (Subgraph_MACD[i] < Subgraph_MA[i])
+	{
+		if (Subgraph_MACD[i] < iL)
+			iL = Subgraph_MACD[i];
+
+		if (Subgraph_MACD[i] < iLow && iL != 999 && iLPainted == 0)
+		{
+			Subgraph_BgRed[i] = MACD;
+			iLPainted = 1;
+		}
+	}
+
+	if (sc.CrossOver(Subgraph_Calc, Subgraph_Calc.Arrays[2]) == CROSS_FROM_TOP)
+	{
+		iHigh = iH;
+		iL = 999;
+		iHPainted = 0;
+	}
+
+	if (sc.CrossOver(Subgraph_Calc, Subgraph_Calc.Arrays[2]) == CROSS_FROM_BOTTOM)
+	{
+		iH = -999;
+		iLow = iL;
+		iLPainted = 0;
+	}
+
+}
 
 #pragma region DTS SCALPER
 
