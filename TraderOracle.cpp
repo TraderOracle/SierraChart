@@ -432,13 +432,14 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCInputRef Input_UseT3 = sc.Input[7];
 	SCInputRef Input_UseFisher = sc.Input[8];
 	SCInputRef Input_ADX = sc.Input[9];
+	SCInputRef Input_IgnoreDoji = sc.Input[10];
 
-	SCInputRef Input_BarColor = sc.Input[10];
-	SCInputRef Input_BarColorWaddah = sc.Input[11];
-	SCInputRef Input_BarColorLinda = sc.Input[12];
+	SCInputRef Input_BarColor = sc.Input[11];
+	SCInputRef Input_BarColorWaddah = sc.Input[12];
+	SCInputRef Input_BarColorLinda = sc.Input[13];
 
-	SCInputRef Input_UpOffset = sc.Input[13];
-	SCInputRef Input_DownOffset = sc.Input[14];
+	SCInputRef Input_UpOffset = sc.Input[14];
+	SCInputRef Input_DownOffset = sc.Input[15];
 
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
@@ -473,6 +474,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[29];
 	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[30];
 	SCSubgraphRef Subgraph_SuperTrend = sc.Subgraph[31];
+	SCSubgraphRef Subgraph_Intersection = sc.Subgraph[32];
 
 	SCSubgraphRef Subgraph_HullATR = sc.Subgraph[33];
 
@@ -503,13 +505,13 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_UseWaddah.SetYesNo(1);
 
 		Input_UseMacd.Name = "Use MACD";
-		Input_UseMacd.SetYesNo(0);
+		Input_UseMacd.SetYesNo(1);
 
 		Input_UseSar.Name = "Use Parabolic Sar";
-		Input_UseSar.SetYesNo(0);
+		Input_UseSar.SetYesNo(1);
 
 		Input_UseSuperTrend.Name = "Use Supertrend";
-		Input_UseSuperTrend.SetYesNo(0);
+		Input_UseSuperTrend.SetYesNo(1);
 
 		Input_UseAO.Name = "Use Awesome Oscillator";
 		Input_UseAO.SetYesNo(0);
@@ -521,10 +523,10 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_UseHMA.SetYesNo(1);
 
 		Input_UseT3.Name = "Use T3";
-		Input_UseT3.SetYesNo(0);
+		Input_UseT3.SetYesNo(1);
 
 		Input_ADX.Name = "Minimum ADX";
-		Input_ADX.SetInt(0);
+		Input_ADX.SetInt(11);
 
 		Input_UpOffset.Name = "Up Offset In Ticks";
 		Input_UpOffset.SetInt(2);
@@ -541,6 +543,10 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		Input_BarColorLinda.Name = "Bar color LindaMACD offset";
 		Input_BarColorLinda.SetInt(40);
+
+		Input_IgnoreDoji.Name = "Ignore Dojis";
+		Input_IgnoreDoji.SetYesNo(1);
+		Input_IgnoreDoji.SetDescription("Ignore when wicks are larger than candle body");
 
 		// =======================================================================
 
@@ -681,6 +687,9 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		Subgraph_SuperTrend.Name = "SuperTrend";
 		Subgraph_SuperTrend.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_Intersection.Name = "Vol Imb Intersections";
+		Subgraph_Intersection.DrawStyle = DRAWSTYLE_IGNORE;
 
 		return;
 	}
@@ -841,37 +850,78 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_Calc, MOVAVGTYPE_SIMPLE, 14);
 		float rsi = Subgraph_Calc[i];
-		float prsi = Subgraph_Calc[i-1];
-		float pprsi = Subgraph_Calc[i-2];
+		float prsi = Subgraph_Calc[i - 1];
+		float pprsi = Subgraph_Calc[i - 2];
 
 #pragma endregion
 
+		if (Input_IgnoreDoji.GetYesNo() == SC_YES &&
+			BodyLength(sc.BaseData, i) < LowerWickLength(sc.BaseData, i) &&
+			BodyLength(sc.BaseData, i) < UpperWickLength(sc.BaseData, i))
+			return;
+
 #pragma region BUY SELL PLOTS
 
-		if (IsThreeOutsideUp(sc, sc.CurrentIndex))
+		if (BarCloseStatus)
+		{
+			int iEndings = 0;
+			const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
+			if (numLines != 0)
+			{
+				for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex)
+				{
+					int32_t lineID{ 0 };
+					int32_t startIndex{ 0 };
+					int32_t endIndex{ 0 };
+					float lineValue{ 0.0f };
+
+					if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex))
+					{
+						if (endIndex > 0)
+						{
+							iEndings++;
+							//DrawText(sc, Subgraph_3oU, "shit", 0, 5);
+							//sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
+							//Subgraph_Intersection[i] = endIndex;
+						}
+					}
+				}
+			}
+			Subgraph_Intersection[i] = iEndings;
+		}
+
+		if (Subgraph_Intersection[i] > Subgraph_Intersection[i - 1] &&
+			!IsVolImbGreen(sc, i-1) && !IsVolImbGreen(sc, i - 2) &&
+			!IsVolImbRed(sc, i - 1) && !IsVolImbRed(sc, i - 2)
+			)
+		{
+			DrawText(sc, Subgraph_3oU, "FILL", 0, 5);
+		}
+
+		if (IsThreeOutsideUp(sc, sc.CurrentIndex) && BarCloseStatus)
 		{
 			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
 			Subgraph_3oU[i] = sc.Low[i];
 		}
-			
-		if (IsThreeOutsideDown(sc, sc.CurrentIndex))
+
+		if (IsThreeOutsideDown(sc, sc.CurrentIndex) && BarCloseStatus)
 		{
 			DrawText(sc, Subgraph_3oD, "3oD", 0, 5);
 			Subgraph_3oD[i] = sc.Low[i];
 		}
-			
+
 		if (IsTweezerTop(sc, sc.CurrentIndex, UpperBand))
 		{
 			DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
 			Subgraph_EqualH[i] = sc.Low[i];
 		}
-			
+
 		if (IsTweezerBottom(sc, sc.CurrentIndex, LowerBand))
 		{
 			DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
 			Subgraph_EqualL[i] = sc.Low[i];
 		}
-			
+
 		if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, UpperBand, sc.TickSize))
 		{
 			DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
@@ -882,7 +932,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
 			Subgraph_Tramp[i] = sc.Low[i];
 		}
-		
+
 		if (Input_BarColor.GetIndex() != 0)
 			sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
 
@@ -956,7 +1006,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Olympus SELL Signal");
 		}
-		
+
 		Subgraph_VolImbUp[i] = 0;
 		Subgraph_VolImbDown[i] = 0;
 
@@ -978,6 +1028,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
+
 
 	}
 
@@ -1604,7 +1655,7 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
-SCSFExport scsf_LindaPullback(SCStudyInterfaceRef sc)
+SCSFExport scsf_Linda_Anti_Setup(SCStudyInterfaceRef sc)
 {
 #pragma region INPUTS
 
@@ -1631,7 +1682,7 @@ SCSFExport scsf_LindaPullback(SCStudyInterfaceRef sc)
 
 	if (sc.SetDefaults)
 	{
-		sc.GraphName = "Linda Pullback";
+		sc.GraphName = "Linda Raschke Anti Setup";
 		sc.GraphRegion = 1;
 		sc.AutoLoop = 1;
 
@@ -1673,7 +1724,7 @@ SCSFExport scsf_LindaPullback(SCStudyInterfaceRef sc)
 		Subgraph_Dot.DrawZeros = true;
 
 		Subgraph_Txt.Name = "Text";
-		Subgraph_Txt.DrawStyle = DRAWSTYLE_HIDDEN; //DRAWSTYLE_CUSTOM_VALUE_AT_Y;
+		Subgraph_Txt.DrawStyle = DRAWSTYLE_TEXT_WITH_BACKGROUND; //DRAWSTYLE_CUSTOM_VALUE_AT_Y;
 		Subgraph_Txt.LineWidth = 9;
 		Subgraph_Txt.PrimaryColor = RGB(255, 255, 255);
 		Subgraph_Txt.DrawZeros = true;
