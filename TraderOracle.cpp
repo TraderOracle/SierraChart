@@ -440,6 +440,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 	SCInputRef Input_UpOffset = sc.Input[14];
 	SCInputRef Input_DownOffset = sc.Input[15];
+	SCInputRef Input_ShavedBuffer = sc.Input[16];
 
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
@@ -475,8 +476,12 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[30];
 	SCSubgraphRef Subgraph_SuperTrend = sc.Subgraph[31];
 	SCSubgraphRef Subgraph_Intersection = sc.Subgraph[32];
+	SCSubgraphRef Subgraph_BBGreen = sc.Subgraph[33];
+	SCSubgraphRef Subgraph_BBRed = sc.Subgraph[34];
+	SCSubgraphRef Subgraph_ShavedGreen = sc.Subgraph[35];
+	SCSubgraphRef Subgraph_ShavedRed = sc.Subgraph[36];
 
-	SCSubgraphRef Subgraph_HullATR = sc.Subgraph[33];
+	SCSubgraphRef Subgraph_HullATR = sc.Subgraph[37];
 
 	SCFloatArrayRef Array_TrueRange = Subgraph_SuperTrend.Arrays[0];
 	SCFloatArrayRef Array_AvgTrueRange = Subgraph_SuperTrend.Arrays[1];
@@ -511,7 +516,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_UseSar.SetYesNo(1);
 
 		Input_UseSuperTrend.Name = "Use Supertrend";
-		Input_UseSuperTrend.SetYesNo(1);
+		Input_UseSuperTrend.SetYesNo(0);
 
 		Input_UseAO.Name = "Use Awesome Oscillator";
 		Input_UseAO.SetYesNo(0);
@@ -523,7 +528,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Input_UseHMA.SetYesNo(1);
 
 		Input_UseT3.Name = "Use T3";
-		Input_UseT3.SetYesNo(1);
+		Input_UseT3.SetYesNo(0);
 
 		Input_ADX.Name = "Minimum ADX";
 		Input_ADX.SetInt(11);
@@ -533,6 +538,9 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		Input_DownOffset.Name = "Down Offset In Ticks";
 		Input_DownOffset.SetInt(2);
+
+		Input_ShavedBuffer.Name = "Shaved candle buffer";
+		Input_ShavedBuffer.SetInt(1);
 
 		Input_BarColor.Name = "Bar coloring";
 		Input_BarColor.SetCustomInputStrings("None;Waddah;Linda MACD;Supertrend");
@@ -636,6 +644,30 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		Subgraph_Tramp.PrimaryColor = RGB(0, 0, 0);
 		Subgraph_Tramp.SecondaryColor = RGB(169, 205, 252);
 		Subgraph_Tramp.LineWidth = 8;
+
+		Subgraph_BBGreen.Name = "Engulfing Green BB";
+		Subgraph_BBGreen.PrimaryColor = RGB(0, 64, 0);
+		Subgraph_BBGreen.DrawStyle = DRAWSTYLE_BACKGROUND;
+		Subgraph_BBGreen.LineWidth = 1;
+		Subgraph_BBGreen.DrawZeros = false;
+
+		Subgraph_BBRed.Name = "Engulfing Red BB";
+		Subgraph_BBRed.PrimaryColor = RGB(70, 0, 35);
+		Subgraph_BBRed.DrawStyle = DRAWSTYLE_BACKGROUND;
+		Subgraph_BBRed.LineWidth = 1;
+		Subgraph_BBRed.DrawZeros = false;
+
+		Subgraph_ShavedGreen.Name = "Shaved Green Candle";
+		Subgraph_ShavedGreen.PrimaryColor = RGB(170, 221, 255);
+		Subgraph_ShavedGreen.DrawStyle = DRAWSTYLE_COLOR_BAR_CANDLE_FILL;
+		Subgraph_ShavedGreen.LineWidth = 1;
+		Subgraph_ShavedGreen.DrawZeros = false;
+
+		Subgraph_ShavedRed.Name = "Shaved Red Candle";
+		Subgraph_ShavedRed.PrimaryColor = RGB(255, 128, 192);
+		Subgraph_ShavedRed.DrawStyle = DRAWSTYLE_COLOR_BAR_CANDLE_FILL;
+		Subgraph_ShavedRed.LineWidth = 1;
+		Subgraph_ShavedRed.DrawZeros = false;
 
 		Subgraph_LindaMACD.Name = "Linda MACD";
 		Subgraph_LindaMACD.DrawStyle = DRAWSTYLE_IGNORE;
@@ -855,10 +887,42 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
+		SCFloatArray SubgraphArray;
+		sc.GetStudyArray(11, 3, SubgraphArray);
+		if (SubgraphArray.GetArraySize() == 0)
+		{
+			return; // The SubgraphArray may not exist or is empty. Either way we can not do anything with it.
+		}
+
+		double dTickie = Input_ShavedBuffer.GetInt() * sc.TickSize;
 		if (Input_IgnoreDoji.GetYesNo() == SC_YES &&
 			BodyLength(sc.BaseData, i) < LowerWickLength(sc.BaseData, i) &&
 			BodyLength(sc.BaseData, i) < UpperWickLength(sc.BaseData, i))
 			return;
+
+		if (IsGreen(sc.BaseData, i) && abs(in[SC_HIGH][i] - in[SC_LAST][i]) < dTickie)
+			Subgraph_ShavedGreen[i] = 1;
+
+		if (IsRed(sc.BaseData, i) && abs(in[SC_LOW][i] - in[SC_LAST][i]) < dTickie)
+			Subgraph_ShavedRed[i] = 1;
+
+		if (in[SC_LOW][i] < LowerBand && 
+			IsGreen(sc.BaseData, i) && 
+			in[SC_HIGH][i] > in[SC_HIGH][i - 1] &&
+			in[SC_LAST][i] > in[SC_LAST][i - 1] && 
+			in[SC_LAST][i - 1] < in[SC_OPEN][i - 1])
+		{
+			Subgraph_BBGreen[i] = 1;
+		}
+
+		if (in[SC_HIGH][i] > UpperBand && 
+			IsRed(sc.BaseData, i) && 
+			in[SC_LOW][i] < in[SC_LOW][i - 1] &&
+			in[SC_LAST][i] < in[SC_LAST][i - 1] && 
+			in[SC_LAST][i - 1] < in[SC_OPEN][i - 1])
+		{
+			Subgraph_BBRed[i] = 1;
+		}
 
 #pragma region BUY SELL PLOTS
 
@@ -892,10 +956,9 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 
 		if (Subgraph_Intersection[i] > Subgraph_Intersection[i - 1] &&
 			!IsVolImbGreen(sc, i-1) && !IsVolImbGreen(sc, i - 2) &&
-			!IsVolImbRed(sc, i - 1) && !IsVolImbRed(sc, i - 2)
-			)
+			!IsVolImbRed(sc, i - 1) && !IsVolImbRed(sc, i - 2))
 		{
-			DrawText(sc, Subgraph_3oU, "FILL", 0, 5);
+			//DrawText(sc, Subgraph_3oU, "FILL", 0, 5);
 		}
 
 		if (IsThreeOutsideUp(sc, sc.CurrentIndex) && BarCloseStatus)

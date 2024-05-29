@@ -14,16 +14,6 @@ double BodyLength(SCBaseDataRef InData, int index)
 	return fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]);
 }
 
-double PercentOfCandleLength(SCBaseDataRef InData, int index, double percent)
-{
-	return CandleLength(InData, index) * (percent / 100.0);
-}
-
-double PercentOfBodyLength(SCBaseDataRef InData, int index, double percent)
-{
-	return BodyLength(InData, index) * percent / 100.0;
-}
-
 double UpperWickLength(SCBaseDataRef InData, int index)
 {
 	double upperBoundary = max(InData[SC_LAST][index], InData[SC_OPEN][index]);
@@ -46,166 +36,6 @@ bool IsGreen(SCBaseDataRef InData, int index)
 bool IsRed(SCBaseDataRef InData, int index)
 {
 	return InData[SC_LAST][index] < InData[SC_OPEN][index];
-}
-
-bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent)
-{
-	return abs(value1 - value2) < (3 * percent); //PercentOfCandleLength(InData, index, percent);
-}
-
-bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent)
-{
-	return UpperWickLength(InData, index) < PercentOfCandleLength(InData, index, percent);
-}
-
-bool IsLowerWickSmall(SCBaseDataRef InData, int index, double percent)
-{
-	return LowerWickLength(InData, index) < PercentOfCandleLength(InData, index, percent);
-}
-
-bool IsBullishEngulfing(SCStudyInterfaceRef sc, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (InData[SC_LAST][index - 1] < InData[SC_OPEN][index - 1] && InData[SC_LAST][index] > InData[SC_OPEN][index])
-	{
-		if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
-			(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
-			(InData[SC_LAST][index] > InData[SC_OPEN][index - 1]) &&
-			(InData[SC_OPEN][index] < InData[SC_LAST][index - 1]))
-			ret_flag = true;
-	}
-	return ret_flag;
-}
-
-bool IsBearishEngulfing(SCStudyInterfaceRef sc, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (InData[SC_LAST][index - 1] > InData[SC_OPEN][index - 1] && InData[SC_LAST][index] < InData[SC_OPEN][index])
-	{
-		if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
-			(InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
-			(InData[SC_OPEN][index] > InData[SC_LAST][index - 1]) &&
-			(InData[SC_LAST][index] < InData[SC_OPEN][index - 1]))
-			ret_flag = true;
-	}
-
-	return ret_flag;
-}
-
-bool IsThreeOutsideUp(SCStudyInterfaceRef sc, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (IsGreen(InData, index) && (InData[SC_LAST][index] > InData[SC_LAST][index - 1]))
-	{
-		if (IsBullishEngulfing(sc, index - 1))
-			ret_flag = true;
-	}
-
-	return ret_flag;
-}
-
-bool IsThreeOutsideDown(SCStudyInterfaceRef sc, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (IsRed(InData, index) && (InData[SC_LAST][index] < InData[SC_LAST][index - 1]))
-	{
-		if (IsBearishEngulfing(sc, index - 1))
-			ret_flag = true;
-	}
-
-	return ret_flag;
-}
-
-const int k_Body_NUM_OF_CANDLES = 5;				// number of previous candles to calculate body strength
-
-inline bool IsBodyStrong(SCBaseDataRef InData, int index)
-{
-	bool ret_flag = false;
-	float mov_aver = 0;
-	for (int i = 1; i < k_Body_NUM_OF_CANDLES + 1; i++)
-		mov_aver += static_cast<float>(BodyLength(InData, index - i));
-	mov_aver /= k_Body_NUM_OF_CANDLES;
-
-	if (BodyLength(InData, index) > mov_aver)
-		ret_flag = true;
-	return ret_flag;
-}
-
-bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
-		&& InData[SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
-		&& IsRed(InData, index)
-		&& IsRed(InData, index - 1)
-		&& IsGreen(InData, index - 2)
-		&& IsGreen(InData, index - 3)
-		&& (InData[SC_HIGH][index - 1] > UpperBand || InData[SC_HIGH][index - 2] > UpperBand)
-		)
-		ret_flag = true;
-
-	return ret_flag;
-}
-
-bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
-		&& InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
-		&& IsGreen(InData, index)
-		&& IsGreen(InData, index - 1)
-		&& IsRed(InData, index - 2)
-		&& IsRed(InData, index - 3)
-		&& (InData[SC_LOW][index - 1] < LowerBand || InData[SC_LOW][index - 2] < LowerBand)
-		)
-		ret_flag = true;
-
-	return ret_flag;
-}
-
-bool IsTrampoline(SCStudyInterfaceRef sc, int index, float rsi, float prsi, float pprsi, float BBBand, int iTickSize)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	if (IsRed(InData, index)
-		&& IsRed(InData, index - 1)
-		&& IsGreen(InData, index - 2)
-		&& InData[SC_LAST][index] < InData[SC_LAST][index - 1]
-		&& (rsi > 80 || prsi > 80 || pprsi > 80)
-		&& InData[SC_HIGH][index - 2] >= (BBBand - (1 * iTickSize))
-		)
-		ret_flag = true;
-
-	if (IsGreen(InData, index)
-		&& IsGreen(InData, index - 1)
-		&& IsRed(InData, index - 2)
-		&& InData[SC_LAST][index] > InData[SC_LAST][index - 1]
-		&& (rsi < 20 || prsi < 20 || pprsi < 20)
-		&& InData[SC_LOW][index - 2] <= (BBBand + (1 * iTickSize))
-		)
-		ret_flag = true;
-
-	return ret_flag;
-}
-
-bool IsStairs(SCStudyInterfaceRef sc, int index)
-{
-	SCBaseDataRef InData = sc.BaseData;
-	bool ret_flag = false;
-
-	return ret_flag;
 }
 
 bool IsVolImbGreen(SCStudyInterfaceRef sc, int index)
@@ -236,106 +66,9 @@ bool IsVolImbRed(SCStudyInterfaceRef sc, int index)
 	return ret_flag;
 }
 
-void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int iAboveCandle, int iBuffer)
-{
-	s_UseTool Tool;
-	int i = sc.Index;
-
-	if (txt == "Eq Lo" || txt == "Eq Hi" || txt == "TR")
-		i = sc.Index - 1;
-
-	Tool.ChartNumber = sc.ChartNumber;
-	Tool.DrawingType = DRAWING_TEXT;
-	Tool.BeginIndex = sc.CurrentIndex;
-	Tool.Region = sc.GraphRegion;
-
-	if (iAboveCandle == 0) // automatic detection
-	{
-		if (sc.Close[i] > sc.Open[i]) // green candle
-			iAboveCandle = 1;
-		else
-			iAboveCandle = -1;
-	}
-
-	if (iAboveCandle == 1)
-	{
-		Tool.BeginValue = sc.High[i] + ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
-		Tool.TextAlignment = DT_CENTER | DT_BOTTOM;
-	}
-	else if (iAboveCandle == -1)
-	{
-		Tool.BeginValue = sc.Low[i] - ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
-		Tool.TextAlignment = DT_CENTER | DT_TOP;
-	}
-
-	Tool.Color = screffy.PrimaryColor;
-	Tool.FontBackColor = screffy.SecondaryColor;
-	Tool.FontSize = screffy.LineWidth;
-	Tool.FontBold = TRUE;
-	Tool.Text.Format("%s", txt.GetChars());
-	Tool.AddMethod = UTAM_ADD_ALWAYS;
-
-	sc.UseTool(Tool);
-}
-
-void DrawStatusText(SCStudyInterfaceRef sc)
-{
-	return;
-
-	SCString sF;
-
-	int& r_DrawingNumber = sc.GetPersistentInt(5);
-	SCString& r_CurrentOnScreenMessage = sc.GetPersistentSCString(1);
-
-	s_SCPositionData SCPositionData;
-	if (sc.GetTradePosition(SCPositionData))
-	{
-		sF.Format("GoldBug Bot - Version 1.0 \nDaily PNL: %02f, Open PNL: %02f \n",
-			SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
-		sF.Append(r_CurrentOnScreenMessage);
-	}
-
-	//n_ACSIL::s_TradeAccountDataFields TradeAccountDataFields;
-	//if (sc.GetTradeAccountData(TradeAccountDataFields, sc.SelectedTradeAccount))
-	//{
-	//	double AccountValue = TradeAccountDataFields.m_AccountValue;
-	//	double dailyPnl = TradeAccountDataFields.m_DailyProfitLoss;
-	//	double openPnl = TradeAccountDataFields.m_OpenPositionsProfitLoss;
-	//	double cash = TradeAccountDataFields.m_CurrentCashBalance;
-
-	//	sF.Format("GoldBug Bot - version 1.0 \nDaily PNL: %0f, Open PNL: %0f \nCash available: %0f \n",
-	//		dailyPnl, openPnl, cash);
-	//	sF.Append(r_CurrentOnScreenMessage);
-	//}
-
-	s_UseTool Tool;
-	Tool.Clear();
-	Tool.ChartNumber = sc.ChartNumber;
-	Tool.DrawingType = DRAWING_TEXT;
-	Tool.BeginDateTime = 5;
-	Tool.Region = sc.GraphRegion;
-	Tool.BeginValue = 95;
-	Tool.UseRelativeVerticalValues = true;
-	Tool.Color = RGB(255, 255, 255);
-	Tool.FontBold = false;
-
-	Tool.Text = sF;
-	Tool.FontSize = 10;
-	Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-	Tool.ReverseTextColor = false;
-
-	if (r_DrawingNumber != 0)
-		Tool.LineNumber = r_DrawingNumber;
-
-	if (sc.UseTool(Tool))
-		r_DrawingNumber = Tool.LineNumber;
-}
-
 void LogInfo(SCStudyInterfaceRef sc)
 {
 	SCString& r_CurrentOnScreenMessage = sc.GetPersistentSCString(1);
-
-	DrawStatusText(sc);
 	sc.AddMessageToLog(r_CurrentOnScreenMessage, 0);
 }
 
@@ -358,7 +91,7 @@ int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 	{
 		s_SCNewOrder NewOrder;
 		NewOrder.OrderQuantity = 1;
-		NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+		NewOrder.OrderType = ordertype
 		NewOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
 
 		if (iDirection == 1)
@@ -409,20 +142,21 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	SCInputRef Input_MaxLoss = sc.Input[8];
 	SCInputRef Input_MaxProfit = sc.Input[8];
 	SCInputRef Input_IgnoreDoji = sc.Input[9];
+	SCInputRef Input_Trend = sc.Input[10];
 
-	SCInputRef Input_UseWaddah = sc.Input[10];
-	SCInputRef Input_UseMacd = sc.Input[11];
-	SCInputRef Input_UseSar = sc.Input[12];
-	SCInputRef Input_UseSuperTrend = sc.Input[13];
-	SCInputRef Input_UseAO = sc.Input[14];
-	SCInputRef Input_UseHMA = sc.Input[15];
-	SCInputRef Input_UseT3 = sc.Input[16];
-	SCInputRef Input_UseFisher = sc.Input[17];
-	SCInputRef Input_WaddahExploding = sc.Input[18];
+	SCInputRef Input_UseWaddah = sc.Input[11];
+	SCInputRef Input_UseMacd = sc.Input[12];
+	SCInputRef Input_UseSar = sc.Input[13];
+	SCInputRef Input_UseSuperTrend = sc.Input[14];
+	SCInputRef Input_UseAO = sc.Input[15];
+	SCInputRef Input_UseHMA = sc.Input[16];
+	SCInputRef Input_UseT3 = sc.Input[17];
+	SCInputRef Input_UseFisher = sc.Input[18];
+	SCInputRef Input_WaddahExploding = sc.Input[19];
 
-	SCInputRef Input_ADX = sc.Input[19];
+	SCInputRef Input_ADX = sc.Input[20];
 
-	SCInputRef Input_WaddahIntensity = sc.Input[20];
+	SCInputRef Input_WaddahIntensity = sc.Input[21];
 
 	///////////////////////////////////////////////////////////////
 
@@ -468,12 +202,17 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
 
+		Input_Trend.Name = "Trade Directions";
+		Input_Trend.SetCustomInputStrings("Trade Both Directions;Only Longs;Only Shorts");
+		Input_Trend.SetCustomInputIndex(0);
+		Input_Trend.SetDescription("If the trend is up or down, you can specify ONLY trading that direction, avoiding a lot of sideways noise.");
+
 		Input_Enabled.Name = "Enabled";
 		Input_Enabled.SetYesNo(1);
 		Input_Enabled.SetDescription("This input enables the study and allows it to function. Otherwise, it does nothing.");
 
 		Input_Simulation.Name = "Send Orders To Trade Service";
-		Input_Simulation.SetYesNo(0);
+		Input_Simulation.SetYesNo(1);
 		Input_Simulation.SetDescription("Send real orders to your trading service");
 
 		Input_TradeBuySell.Name = "Standard Buy/Sell";
@@ -481,7 +220,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_TradeBuySell.SetDescription("Trade standard buy/sell signals");
 
 		Input_TradeImbalance.Name = "Trade Volume Imbalances";
-		Input_TradeImbalance.SetYesNo(1);
+		Input_TradeImbalance.SetYesNo(0);
 		Input_TradeImbalance.SetDescription("Trade candle gaps (volume imbalances)");
 
 		Input_TradeEngulfBB.Name = "Trade Engulfing Candle off Bollinger Bands";
@@ -489,7 +228,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_TradeEngulfBB.SetDescription("Are we bouncing off a bollinger band, and have an engulfing candle?");
 
 		Input_TradeFVG.Name = "Trade Fair Value Gaps";
-		Input_TradeFVG.SetYesNo(1);
+		Input_TradeFVG.SetYesNo(0);
 		Input_TradeFVG.SetDescription("Open trade when fair value gap is formed");
 
 		Input_Aggressive.Name = "Aggressive Mode";
@@ -525,7 +264,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_UseSar.SetYesNo(1);
 
 		Input_UseSuperTrend.Name = "Use Supertrend";
-		Input_UseSuperTrend.SetYesNo(0);
+		Input_UseSuperTrend.SetYesNo(1);
 
 		Input_UseAO.Name = "Use Awesome Oscillator";
 		Input_UseAO.SetYesNo(0);
@@ -540,10 +279,10 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_WaddahExploding.SetYesNo(1);
 
 		Input_UseT3.Name = "Use T3";
-		Input_UseT3.SetYesNo(0);
+		Input_UseT3.SetYesNo(1);
 
 		Input_ADX.Name = "Minimum ADX";
-		Input_ADX.SetInt(0);
+		Input_ADX.SetInt(11);
 
 		Subgraph_KAMA.Name = "KAMA";
 		Subgraph_LindaMACD.DrawStyle = DRAWSTYLE_IGNORE;
@@ -600,8 +339,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Subgraph_SuperTrend.DrawStyle = DRAWSTYLE_IGNORE;
 
 		Subgraph_Txt.Name = "Text Output 1";
-		Subgraph_Txt.DrawStyle = DRAWSTYLE_TEXT;
-		Subgraph_Txt.PrimaryColor = RGB(255, 255, 255);
+		Subgraph_Txt.DrawStyle = DRAWSTYLE_CUSTOM_VALUE_AT_Y;
 		Subgraph_Txt.LineWidth = 10;
 		Subgraph_Txt.DrawZeros = false;
 
@@ -635,7 +373,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 
 	if (sc.LastCallToFunction)
 		return;
-
+	   
 	if (Input_IgnoreDoji.GetYesNo() == SC_YES && 
 		BodyLength(sc.BaseData, sc.Index) < LowerWickLength(sc.BaseData, sc.Index) &&
 		BodyLength(sc.BaseData, sc.Index) < UpperWickLength(sc.BaseData, sc.Index))
@@ -646,7 +384,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	int& currBar = sc.GetPersistentInt(1);
 
 	s_SCPositionData SCPositionData;
-	if (sc.GetTradePosition(SCPositionData))
+	if (false && sc.GetTradePosition(SCPositionData))
 	{
 		double totalPNL = abs(SCPositionData.DailyProfitLoss) + abs(SCPositionData.OpenProfitLoss);
 		if (totalPNL > Input_MaxLoss.GetInt())
@@ -659,7 +397,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			r_Msg = "You achieved your profit target";
 			return;
 		}
-		sF.Format("GoldBug - Version 1.2 \nDaily PNL: %.02f, Open PNL: %.02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
+		sF.Format("GoldBug - Version 1.4 \nDaily PNL: %.02f, Open PNL: %.02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
 		sF.Append(r_Msg);
 		sc.AddAndManageSingleTextUserDrawnDrawingForStudy(sc, true, 5, 90, Subgraph_Txt, true, sF, true, 1);
 	}
@@ -678,7 +416,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 
 		bool BarCloseStatus = false;
 		bool sqRelaxUp;
-		bool bSuperUp;
+		bool bSuperUp, bSuperDown;
 
 		if (i < sc.ArraySize - 1)
 			BarCloseStatus = true;
@@ -729,7 +467,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			Subgraph_SuperTrend[sc.Index] = Subgraph_SuperTrend[sc.Index - 1];
 
 		if (Subgraph_SuperTrend[sc.Index] == Array_UpperBand[sc.Index])
-			bSuperUp = false;
+			bSuperDown = true;
 		else
 			bSuperUp = true;
 
@@ -834,6 +572,8 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			return;
 		}
 
+		//Subgraph_Txt[i] = t1;
+
 #pragma endregion
 
 #pragma region BUY SELL
@@ -850,9 +590,11 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			(Input_UseAO.GetYesNo() == SC_YES && ao < 0) ||
 			(adx < Input_ADX.GetInt()) ||
 			(Input_UseHMA.GetYesNo() == SC_YES && hma > close) ||
-			(Input_UseSuperTrend.GetYesNo() == SC_YES && !bSuperUp) ||
-			(Input_WaddahExploding.GetYesNo() == SC_YES && t1 < e1)
+			(Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperDown) ||
+			(Input_Trend.GetIndex() == 1) ||
+			(Input_WaddahExploding.GetYesNo() == SC_YES && abs(t1) < e1)
 			)
+
 			bShowUp = false;
 
 		if (
@@ -865,7 +607,8 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			(adx < Input_ADX.GetInt()) ||
 			(Input_UseHMA.GetYesNo() == SC_YES && hma < close) ||
 			(Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperUp) ||
-			(Input_WaddahExploding.GetYesNo() == SC_YES && t1 < e1)
+			(Input_Trend.GetIndex() == 2) ||
+			(Input_WaddahExploding.GetYesNo() == SC_YES && abs(t1) < e1)
 			)
 			bShowDown = false;
 
@@ -876,7 +619,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			txt.Format("Standard BUY Signal at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
-			if (sc.IsNewBar(i))
+			//if (sc.IsNewBar(i))
 				sc.AlertWithMessage(199, "Standard BUY Signal");
 		}
 
@@ -887,11 +630,11 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			txt.Format("Standard SELL Signal at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
-			if (sc.IsNewBar(i))
+			//if (sc.IsNewBar(i))
 				sc.AlertWithMessage(200, "Standard SELL Signal");
 		}
-
-		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
+/*
+		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex) && Input_Trend.GetIndex() != 2)
 		{
 			if (Input_TradeImbalance.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, 1, Input_MaxPositions.GetInt());
@@ -902,7 +645,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 				sc.AlertWithMessage(197, "Volume Imbalance BUY");
 		}
 
-		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
+		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex) && Input_Trend.GetIndex() != 1)
 		{
 			if (Input_TradeImbalance.GetYesNo() == SC_YES)
 				iPos = OrderPizza(sc, -1, Input_MaxPositions.GetInt());
@@ -913,10 +656,9 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 				sc.AlertWithMessage(198, "Volume Imbalance SELL");
 		}
 
-		if (BarCloseStatus && FVGUp)
+		if (BarCloseStatus && FVGUp && Input_Trend.GetIndex() != 2 && Input_TradeFVG.GetYesNo() == SC_YES)
 		{
-			if (Input_TradeFVG.GetYesNo() == SC_YES)
-				iPos = OrderPizza(sc, 1, Input_MaxPositions.GetInt());
+			iPos = OrderPizza(sc, 1, Input_MaxPositions.GetInt());
 			txt.Format("Fair Value Gap BUY at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
@@ -924,16 +666,16 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 				sc.AlertWithMessage(197, "Fair Value Gap BUY");
 		}
 
-		if (BarCloseStatus && FVGDn)
+		if (BarCloseStatus && FVGDn && Input_Trend.GetIndex() != 1 && Input_TradeFVG.GetYesNo() == SC_YES)
 		{
-			if (Input_TradeFVG.GetYesNo() == SC_YES)
-				iPos = OrderPizza(sc, -1, Input_MaxPositions.GetInt());
+			iPos = OrderPizza(sc, -1, Input_MaxPositions.GetInt());
 			txt.Format("Fair Value Gap SELL at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
 			if (sc.IsNewBar(i))
 				sc.AlertWithMessage(198, "Fair Value Gap SELL");
 		}
+*/
 
 #pragma endregion
 
