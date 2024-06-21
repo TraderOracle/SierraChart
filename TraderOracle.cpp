@@ -948,7 +948,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		sc.GetStudyArray(11, 3, SubgraphArray);
 		if (SubgraphArray.GetArraySize() == 0)
 		{
-			return; // The SubgraphArray may not exist or is empty. Either way we can not do anything with it.
+			// The SubgraphArray may not exist or is empty. Either way we can not do anything with it.
 		}
 
 		double dTickie = Input_ShavedBuffer.GetInt() * sc.TickSize;
