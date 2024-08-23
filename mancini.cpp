@@ -8,18 +8,53 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	SCGraphData ref;
 	SCString Message = "";
 
-    // 5615 (major), 5611, 5604 (major), 5593 (major), 5585, 5572, 5566, 5560, 5551, 5546 (major), 5534, 5528, 5519 (major), 5511, 5502, 5487-90 (major), 5483, 5474-76 (major), 5462, 5457, 5450, 5443-46 (major), 5436 (major), 5429, 5423, 5414 (major), 5409, 5400-05 (major), 5390, 5379, 5372 (major).
-    // 5615 (major), 5621, 5628 (major), 5636, 5642, 5650-54 (major), 5661, 5667 (major), 5672, 5679 (major), 5686, 5690, 5700-05 (major), 5715 (major), 5721, 5728 (major), 5737, 5753, 5765 (major).
-
 	SCInputRef Input_Support = sc.Input[0];
 	SCInputRef Input_Resistance = sc.Input[1];
-    SCInputRef Input_RecalcInterval = sc.Input[2];
+    SCInputRef Input_Text = sc.Input[2];
+	SCInputRef Input_TextSize = sc.Input[3];
+
+    SCInputRef Input_RecalcInterval = sc.Input[5];
+
+	SCSubgraphRef Subgraph_Support = sc.Subgraph[0];
+	SCSubgraphRef Subgraph_SupportMajor = sc.Subgraph[1];
+	SCSubgraphRef Subgraph_Resist = sc.Subgraph[2];
+	SCSubgraphRef Subgraph_ResistMajor = sc.Subgraph[3];
 
 	if (sc.SetDefaults)
 	{
 		sc.GraphName = "Mancini Lines";
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
+
+		Subgraph_Resist.Name = "Resistance";
+		Subgraph_Resist.PrimaryColor = COLOR_RED;
+		Subgraph_Resist.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_Resist.LineStyle = LINESTYLE_SOLID;
+		Subgraph_Resist.DrawZeros = false;
+
+		Subgraph_ResistMajor.Name = "Major Resistance";
+		Subgraph_ResistMajor.PrimaryColor = COLOR_ORANGE;
+		Subgraph_ResistMajor.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_ResistMajor.LineStyle = LINESTYLE_SOLID;
+		Subgraph_ResistMajor.DrawZeros = false;
+
+		Subgraph_Support.Name = "Support";
+		Subgraph_Support.PrimaryColor = COLOR_GREEN;
+		Subgraph_Support.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_Support.LineStyle = LINESTYLE_SOLID;
+		Subgraph_Support.DrawZeros = false;
+
+		Subgraph_SupportMajor.Name = "Major Support";
+		Subgraph_SupportMajor.PrimaryColor = COLOR_LIME;
+		Subgraph_SupportMajor.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_SupportMajor.LineStyle = LINESTYLE_SOLID;
+		Subgraph_SupportMajor.DrawZeros = false;
+
+		Input_Text.Name = "Text to display";
+		Input_Text.SetString("Mancini");
+
+        Input_TextSize.Name = "Text Size";
+        Input_TextSize.SetInt(7);
 
         Input_RecalcInterval.Name = "Redraw Interval (seconds)";
         Input_RecalcInterval.SetInt(30);
@@ -59,7 +94,7 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
                 Message.Format("Token: |%s|, Price: %f", s.GetChars(), pr);
 				sc.AddMessageToLog(Message, 1);
 	    		s_UseTool Tool;
-	    		Tool.LineStyle = LINESTYLE_SOLID;
+	    		Tool.LineStyle = Subgraph_Support.LineStyle;
 	    		Tool.LineNumber = idx;
 	    		Tool.LineWidth = 1;
 	    		Tool.TextAlignment = DT_RIGHT;
@@ -72,12 +107,15 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    		Tool.AddMethod = UTAM_ADD_OR_ADJUST;
 	    		Tool.ShowPrice = 0;
                 sc.AddMessageToLog("2", 1);
-                Tool.Color = COLOR_LIME;
-                Tool.Text.Format("Mancini");
+                Tool.Color = Subgraph_Support.PrimaryColor;
+				Tool.FontSize = Input_TextSize.GetInt();
+                Tool.Text.Format(Input_Text.GetString());
                 if (s.IndexOf('(') != -1)
                 {
-	    		    Tool.Text.Format("Mancini (MAJOR)");
-    			    Tool.Color = COLOR_LIME;
+					SCString se = Input_Text.GetString();
+	    		    Tool.Text.Format("%s (MAJOR)", se.GetChars());
+    			    Tool.Color = Subgraph_SupportMajor.PrimaryColor;
+					Tool.LineStyle = Subgraph_SupportMajor.LineStyle;
                     Tool.LineWidth = 2;
                     sc.AddMessageToLog("3", 1);
                 }
@@ -99,7 +137,7 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
                 Message.Format("Token: |%s|, Price: %f", s.GetChars(), pr);
 				sc.AddMessageToLog(Message, 1);
 	    		s_UseTool Tool;
-	    		Tool.LineStyle = LINESTYLE_SOLID;
+	    		Tool.LineStyle = Subgraph_Resist.LineStyle;
 	    		Tool.LineNumber = idx;
 	    		Tool.LineWidth = 1;
 	    		Tool.TextAlignment = DT_RIGHT;
@@ -112,12 +150,15 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    		Tool.AddMethod = UTAM_ADD_OR_ADJUST;
 	    		Tool.ShowPrice = 0;
                 sc.AddMessageToLog("7", 1);
-                Tool.Color = COLOR_RED;
-                Tool.Text.Format("Mancini");
+                Tool.Color = Subgraph_Resist.PrimaryColor;
+				Tool.FontSize = Input_TextSize.GetInt();
+                Tool.Text.Format(Input_Text.GetString());
                 if (s.IndexOf('(') != -1)
                 {
-	    		    Tool.Text.Format("Mancini (MAJOR)");
-    			    Tool.Color = COLOR_ORANGE;
+					Tool.Color = Subgraph_ResistMajor.PrimaryColor;
+					SCString se = Input_Text.GetString();
+					Tool.LineStyle = Subgraph_ResistMajor.LineStyle;
+	    		    Tool.Text.Format("%s (MAJOR)", se.GetChars());
                     Tool.LineWidth = 2;
                 }
     			sc.UseTool(Tool);
