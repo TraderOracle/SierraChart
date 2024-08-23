@@ -169,5 +169,6 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
         else
         {
 	    	sc.AddMessageToLog("You're NOT on an ES chart - please change to ES", 1);
+			sc.AddUserDrawnText("You're NOT on an ES chart - please change to ES", 100, 100, RGB(255, 0, 0), 16, 0, 0, 1, 0);
         }
 }
