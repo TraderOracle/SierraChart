@@ -42,6 +42,8 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCString sES = Input_ES_Lines.GetString();
 	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
 
+	int idx = 1;
+
 	SCString chtName = sa.Format("$%s", sa.GetChars());
 	if (chtName.Left(3) == "$NQ")
 	{
@@ -49,9 +51,7 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 		if (iPos != -1)
 		{
 			SCString sMQ1 = sMQ.GetSubString(sMQ.GetLength() - iPos - 1, iPos + 1);
-			SCString sES1 = sES.GetSubString(sES.GetLength() - iPos - 1, iPos + 1);
 
-			int idx = 1;
 			std::vector<char*> tokens;
 			sMQ1.Tokenize(",", tokens);
 			SCString desc, price;
@@ -77,6 +77,7 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 					Tool.Text.Format("%s", desc.GetChars());
 					Tool.FontSize = 9;
 					Tool.LineWidth = 1;
+					Tool.LineNumber = idx;
 					Tool.Color = COLOR_LIME;
 					if (desc.Left(3) == " BL")
 						Tool.Color = RGB(224, 206, 157);
@@ -114,6 +115,7 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 					s_UseTool Tool;
 					Tool.LineStyle = LINESTYLE_SOLID;
 					Tool.LineWidth = 1;
+					Tool.LineNumber = idx;
 					Tool.TextAlignment = DT_RIGHT;
 					Tool.DrawingType = DRAWING_HORIZONTALLINE;
 					Tool.BeginValue = pr;
