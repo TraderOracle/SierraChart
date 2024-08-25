@@ -8,14 +8,15 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 	SCGraphData ref;
 	SCString Message = "";
 
-	SCInputRef Input_Support = sc.Input[1];
-	SCInputRef Input_Resistance = sc.Input[2];
-	SCInputRef Input_RatioScanner = sc.Input[3];
+	SCInputRef Input_Support = sc.Input[0];
+	SCInputRef Input_Resistance = sc.Input[1];
+	SCInputRef Input_RatioScanner = sc.Input[2];
+	SCInputRef Input_Ratio = sc.Input[3];
     SCInputRef Input_Text = sc.Input[4];
 	SCInputRef Input_TextSize = sc.Input[5];
-	SCInputRef Input_Ratio = sc.Input[6];
-    SCInputRef Input_RecalcInterval = sc.Input[7];
-    SCInputRef Input_SourceTicker = sc.Input[8];
+    SCInputRef Input_SourceTicker = sc.Input[7];
+	SCInputRef Input_ShowPrice = sc.Input[8];
+	SCInputRef Input_RecalcInterval = sc.Input[9];
 
 	SCSubgraphRef Subgraph_Support = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_SupportMajor = sc.Subgraph[1];
@@ -32,28 +33,35 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 		Subgraph_Resist.PrimaryColor = COLOR_RED;
 		Subgraph_Resist.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_Resist.LineStyle = LINESTYLE_SOLID;
+		Subgraph_Resist.LineWidth = 1;
 		Subgraph_Resist.DrawZeros = false;
 
 		Subgraph_ResistMajor.Name = "Major Resistance";
 		Subgraph_ResistMajor.PrimaryColor = COLOR_ORANGE;
 		Subgraph_ResistMajor.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_ResistMajor.LineStyle = LINESTYLE_SOLID;
+		Subgraph_ResistMajor.LineWidth = 1;
 		Subgraph_ResistMajor.DrawZeros = false;
 
 		Subgraph_Support.Name = "Support";
 		Subgraph_Support.PrimaryColor = COLOR_GREEN;
 		Subgraph_Support.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_Support.LineStyle = LINESTYLE_SOLID;
+		Subgraph_Support.LineWidth = 1;
 		Subgraph_Support.DrawZeros = false;
 
 		Subgraph_SupportMajor.Name = "Major Support";
 		Subgraph_SupportMajor.PrimaryColor = COLOR_LIME;
 		Subgraph_SupportMajor.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_SupportMajor.LineStyle = LINESTYLE_SOLID;
+		Subgraph_SupportMajor.LineWidth = 1;
 		Subgraph_SupportMajor.DrawZeros = false;
 
         Input_Text.Name = "Text to display";
 		Input_Text.SetString("Mancini");
+
+		Input_ShowPrice.Name = "Show Price";
+		Input_ShowPrice.SetYesNo(1);
 
         Input_TextSize.Name = "Text Size";
         Input_TextSize.SetInt(7);
@@ -71,10 +79,10 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 		Input_SourceTicker.SetString("ES");
 
 		Input_Support.Name = "Mancini Support";
-		Input_Support.SetString("5615 (major), 5611, 5604 (major), 5593 (major), 5585, 5572, 5566, 5560, 5551, 5546 (major), 5534, 5528, 5519 (major), 5511, 5502, 5487-90 (major), 5483, 5474-76 (major), 5462, 5457, 5450, 5443-46 (major), 5436 (major), 5429, 5423, 5414 (major), 5409, 5400-05 (major), 5390, 5379, 5372 (major)");
+		Input_Support.SetString("5515 (major), 5511, 5504 (major), 5453 (major), 5295");
 
 		Input_Resistance.Name = "Mancini Resistance";
-		Input_Resistance.SetString("");
+		Input_Resistance.SetString("5600 (major), 5571, 5594 (major), 5555 (major), 5795");
 
 		return;
 	}
@@ -95,6 +103,9 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 		SCString chtName = sc.GetChartSymbol(ChartIndex);
 		if (chtName.CompareNoCase(Input_SourceTicker.GetString(), 2) == 0)
 		{
+			SCString scan, sL, price;
+			int idx = 1;
+
 			sc.GetChartBaseData(ChartIndex, srcChart);
 			int iSize = srcChart[SC_LAST].GetArraySize();
 			if (iSize != 0)
@@ -102,21 +113,17 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 				sc.GetChartBaseData(ChartIndex, srcChart);
 				float srcClose = srcChart[SC_LAST].ElementAt(iSize-1);
 				float destClose = sc.BaseDataIn[SC_LAST][sc.Index];
-                SCString scan;
                 float fscan = destClose / srcClose;
-                scan.Format("%0.4f", fscan);
+                scan.Format("%0.5f", fscan);
 				Input_RatioScanner.SetString(scan);
 				//Message.Format("srcClose: %f, destClose: %f, Ratio: %f", srcClose, destClose, Ratio);
 				//sc.AddMessageToLog(Message, 1);
 
-				int idx = 1;
-				std::vector<char*> tokens;
+				std::vector<char*> tkSupport;
 				SCString sSupport = Input_Support.GetString();
-				sSupport.Tokenize(", ", tokens);
-				SCString sL, price;
-				for (SCString s: tokens)
+				sSupport.Tokenize(", ", tkSupport);
+				for (SCString s: tkSupport)
 				{
-                    // 5615 (major), 5611, 5604 (major), 5593 (major), 5585, 5572, 5566, 5560, 5551, 5546 (major), 5534, 5528, 5519 (major), 5511, 5502, 5487-90 (major), 5483, 5474-76 (major), 5462, 5457, 5450, 5443-46 (major), 5436 (major), 5429, 5423, 5414 (major), 5409, 5400-05 (major), 5390, 5379, 5372 (major)
                     sL = s.Left(4);
 					price = sL.GetChars();
 					float pr = atof(price.GetChars()) * Ratio;
@@ -124,9 +131,9 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 					sc.AddMessageToLog(Message, 1);
 
 					s_UseTool Tool;
-					Tool.LineStyle = LINESTYLE_SOLID;
+					Tool.LineStyle = Subgraph_Support.LineStyle;
 					Tool.LineNumber = idx;
-					Tool.LineWidth = 1;
+					Tool.LineWidth = Subgraph_Support.LineWidth;
 					Tool.TextAlignment = DT_RIGHT;
 					Tool.DrawingType = DRAWING_HORIZONTALLINE;
 					Tool.BeginValue = pr;
@@ -136,16 +143,63 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 					Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
 					Tool.AddMethod = UTAM_ADD_OR_ADJUST;
                     Tool.FontSize = Input_TextSize.GetInt();
-					Tool.ShowPrice = 1;
+					Tool.ShowPrice = 0;
+					if (Input_ShowPrice.GetYesNo() == SC_YES);
+						Tool.ShowPrice = 1;
 					Tool.TransparencyLevel = 50;
                     Tool.Color = Subgraph_Support.PrimaryColor;
                     Tool.Text.Format(Input_Text.GetString());
                     if (s.IndexOf('(') != -1)
                     {
+						Tool.LineStyle = Subgraph_SupportMajor.LineStyle;
+						Tool.LineWidth = Subgraph_SupportMajor.LineWidth;
+						Tool.Color = Subgraph_SupportMajor.PrimaryColor;
                         SCString se = Input_Text.GetString();
 	    		        Tool.Text.Format("%s (MAJOR)", se.GetChars());
-                        Tool.Color = Subgraph_SupportMajor.PrimaryColor;
                     }
+					sc.UseTool(Tool);
+					idx++;
+				}
+
+				std::vector<char*> tkResist;
+				SCString sResist = Input_Resistance.GetString();
+				sResist.Tokenize(", ", tkResist);
+				for (SCString s : tkResist)
+				{
+					// 5615 (major), 5611, 5604 (major)
+					sL = s.Left(4);
+					price = sL.GetChars();
+					float pr = atof(price.GetChars()) * Ratio;
+					Message.Format("Ratio: %f, Before: %s, After: %f", Ratio, price.GetChars(), pr);
+					sc.AddMessageToLog(Message, 1);
+
+					s_UseTool Tool;
+					Tool.LineStyle = Subgraph_Resist.LineStyle;
+					Tool.LineNumber = idx;
+					Tool.LineWidth = Subgraph_Resist.LineWidth;
+					Tool.TextAlignment = DT_RIGHT;
+					Tool.DrawingType = DRAWING_HORIZONTALLINE;
+					Tool.BeginValue = pr;
+					Tool.EndValue = pr;
+					Tool.ChartNumber = sc.ChartNumber;
+					Tool.BeginDateTime = sc.BaseDateTimeIn[0];
+					Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
+					Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+					Tool.FontSize = Input_TextSize.GetInt();
+					Tool.ShowPrice = 0;
+					if (Input_ShowPrice.GetYesNo() == SC_YES);
+						Tool.ShowPrice = 1;
+					Tool.TransparencyLevel = 50;
+					Tool.Color = Subgraph_Resist.PrimaryColor;
+					Tool.Text.Format(Input_Text.GetString());
+					if (s.IndexOf('(') != -1)
+					{
+						Tool.LineStyle = Subgraph_ResistMajor.LineStyle;
+						Tool.LineWidth = Subgraph_ResistMajor.LineWidth;
+						SCString se = Input_Text.GetString();
+						Tool.Text.Format("%s (MAJOR)", se.GetChars());
+						Tool.Color = Subgraph_ResistMajor.PrimaryColor;
+					}
 					sc.UseTool(Tool);
 					idx++;
 				}
