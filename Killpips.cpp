@@ -8,7 +8,8 @@ void DrawLines(SCString str,
 	SCSubgraphRef Subgraph_BL,
 	SCSubgraphRef Subgraph_range,
 	SCSubgraphRef Subgraph_min,
-	SCSubgraphRef Subgraph_max)
+	SCSubgraphRef Subgraph_max,
+	SCSubgraphRef Subgraph_vix)
 {
 	int idx = 1;
 
@@ -50,6 +51,12 @@ void DrawLines(SCString str,
 				Tool.LineStyle = Subgraph_BL.LineStyle;
 				Tool.LineWidth = Subgraph_BL.LineWidth;
 				Tool.Color = Subgraph_BL.PrimaryColor;
+			}
+			if (desc.Left(3) == "vix")
+			{
+				Tool.LineStyle = Subgraph_vix.LineStyle;
+				Tool.LineWidth = Subgraph_vix.LineWidth;
+				Tool.Color = Subgraph_vix.PrimaryColor;
 			}
 			if (desc.Left(3) == "kvo")
 			{
@@ -103,12 +110,20 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_range = sc.Subgraph[2];
 	SCSubgraphRef Subgraph_min = sc.Subgraph[3];
 	SCSubgraphRef Subgraph_max = sc.Subgraph[4];
+	SCSubgraphRef Subgraph_vix = sc.Subgraph[5];
 
 	if (sc.SetDefaults)
 	{
-		sc.GraphName = "Killpips Levels v1.3";
+		sc.GraphName = "Killpips Levels v1.4";
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
+
+		Subgraph_vix.Name = "vix";
+		Subgraph_vix.PrimaryColor = COLOR_WHITE;
+		Subgraph_vix.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_vix.LineStyle = LINESTYLE_SOLID;
+		Subgraph_vix.LineWidth = 1;
+		Subgraph_vix.DrawZeros = false;
 
 		Subgraph_kvo.Name = "kvo";
 		Subgraph_kvo.PrimaryColor = COLOR_WHITE;
@@ -186,15 +201,15 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
 	SCString chtName = sa.Format("$%s", sa.GetChars());
 	if (chtName.Left(3) == s1.Left(3))
-		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s2.Left(3))
-		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s3.Left(3))
-		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s4.Left(3))
-		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s5.Left(3))
-		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s6.Left(3))
-		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max);
+		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 }
