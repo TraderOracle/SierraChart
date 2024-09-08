@@ -45,43 +45,44 @@ void DrawLines(SCString str,
 			Tool.FontSize = 9;
 			Tool.LineWidth = 1;
 			Tool.LineNumber = idx;
-			Tool.Color = COLOR_LIME;
+			Tool.Color = COLOR_GAINSBORO;
 			if (desc.Left(2) == "BL")
 			{
 				Tool.LineStyle = Subgraph_BL.LineStyle;
 				Tool.LineWidth = Subgraph_BL.LineWidth;
 				Tool.Color = Subgraph_BL.PrimaryColor;
 			}
-			if (desc.Left(3) == "vix")
+			if (desc.Left(3) == "vix" || desc.Left(3) == "HVL")
 			{
 				Tool.LineStyle = Subgraph_vix.LineStyle;
 				Tool.LineWidth = Subgraph_vix.LineWidth;
 				Tool.Color = Subgraph_vix.PrimaryColor;
 			}
-			if (desc.Left(3) == "kvo")
+			if (desc.Left(3) == "kvo" || desc.Left(3) == "GEX")
 			{
 				Tool.LineStyle = Subgraph_kvo.LineStyle;
 				Tool.LineWidth = Subgraph_kvo.LineWidth;
 				Tool.Color = Subgraph_kvo.PrimaryColor;
 			}
-			if (desc.Left(5) == "range")
+			if (desc.Left(5) == "range" || desc.Right(3) == "ort")
 			{
 				Tool.LineStyle = Subgraph_range.LineStyle;
 				Tool.LineWidth = Subgraph_range.LineWidth;
 				Tool.Color = Subgraph_range.PrimaryColor;
 			}
-			if (desc.Right(3) == "min")
+			if (desc.Right(2) == "in" || desc.Left(3) == "HVL")
 			{
 				Tool.LineStyle = Subgraph_min.LineStyle;
 				Tool.LineWidth = Subgraph_min.LineWidth;
 				Tool.Color = Subgraph_min.PrimaryColor;
 			}
-			if (desc.Right(3) == "max")
+			if (desc.Right(2) == "ax")
 			{
 				Tool.LineStyle = Subgraph_max.LineStyle;
 				Tool.LineWidth = Subgraph_max.LineWidth;
 				Tool.Color = Subgraph_max.PrimaryColor;
 			}
+			Tool.FontBold = true;
 			sc.UseTool(Tool);
 		}
 		else
@@ -103,6 +104,10 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCInputRef Input_4_Lines = sc.Input[3];
 	SCInputRef Input_5_Lines = sc.Input[4];
 	SCInputRef Input_6_Lines = sc.Input[5];
+	SCInputRef Input_7_Lines = sc.Input[6];
+	SCInputRef Input_8_Lines = sc.Input[7];
+	SCInputRef Input_9_Lines = sc.Input[8];
+	SCInputRef Input_10_Lines = sc.Input[9];
 	SCInputRef Input_RecalcInterval = sc.Input[7];
 
 	SCSubgraphRef Subgraph_kvo = sc.Subgraph[0];
@@ -114,7 +119,7 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 
 	if (sc.SetDefaults)
 	{
-		sc.GraphName = "Killpips Levels v1.4";
+		sc.GraphName = "Killpips Levels";
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
 
@@ -164,22 +169,34 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 		Input_RecalcInterval.SetInt(30);
 
 		Input_1_Lines.Name = "Values";
-		Input_1_Lines.SetString("$NQ1!: range k max, 20185, range k+50%, 19987, range k 0, 19791, range k-50%, 19593, range k min, 19397, kvo2, 20086, kvo2, 19979, kvo2, 19904, kvo1, 19882, kvo1, 19832, kvo1, 19811, kvo1, 19773, kvo1, 19720, kvo1, 19674, kvo1, 19659, kvo2, 19517, kvo2, 19450");
+		Input_1_Lines.SetString("NQ1!: vix r1, 19064, vix r2, 19095, vix s1, 18692, vix s2, 18661, range k max, 19368, range k+50%, 19168, range k 0, 18964, range k-50%, 18762, range k min, 18558, kvo, 19269, kvo, 19070, kvo, 18860, kvo, 18665, kvo, 18563, kvo, 19090");
 
 		Input_2_Lines.Name = "Values";
-		Input_2_Lines.SetString("$ES1!: range k max, 5730, range k+50%, 5691, range k 0, 5652, range k-50%, 5613, range k min, 5574, kvo2, 5720, kvo2, 5707, kvo2, 5685, kvo2, 5673, kvo2, 5662, kvo1, 5649, kvo1, 5642, kvo1, 5638, kvo2, 5631, kvo1, 5625, kvo1, 5615, kvo2, 5601, kvo2, 5682");
+		Input_2_Lines.SetString("$ES1!: vix r1, 5552, vix r2, 5561, vix s1, 5443, vix s2, 5434, range k max, 5593, kvo, 5573, range k+50%, 5554, kvo, 5532, range k 0, 5511.5, kvo, 5491, range k-50%, 5470.50, kvo, 5450, range k min, 5429.50, kvo, 5555.50, kvo, 5503");
 
 		Input_3_Lines.Name = "Values";
-		Input_3_Lines.SetString("$YM1!: range k max, 41746, range k+50%, 41510, range k 0, 41274, range k-50%, 41036, range k min, 40797, kvo2, 41620, kvo2, 41326, kvo1, 41217, kvo1, 41169, kvo1, 41089, kvo1, 41060, kvo2, 40983, kvo2, 40882");
+		Input_3_Lines.SetString("$YM1!: vix r1, 41173, vix r2, 41242, vix s1, 40370, vix s2, 40303, range k max, 41323, kvo, 41235, range k+50%, 41076, kvo, 40995, range k 0, 40832, kvo, 40750, range k-50%, 40581, kvo, 40504, range k min, 40339, kvo, 40849, kvo, 41211");
 
 		Input_4_Lines.Name = "Values";
 		Input_4_Lines.SetString("$CL1!: range k max, 77.18, range k+50%, 75.99, range k 0, 74.82, range k-50%, 73.65, range k min, 72.48, kvo2, 76.84, kvo2, 75.51, kvo2, 74.91, kvo1, 74.64, kvo1, 74.20, kvo1, 73.72, kvo1, 72.97");
 
 		Input_5_Lines.Name = "Values";
-		Input_5_Lines.SetString("$GC1!: range k max, 2586, range k+50%, 2566, range k 0, 2546, range k-50%, 2526, range k min, 2506, kvo2, 2570, kvo2, 2558, kvo1, 2551, kvo1, 2547, kvo1, 2541, kvo1, 2537, kvo1, 2531, kvo1, 2527, kvo1, 2518, kvo1, 2516");
+		Input_5_Lines.SetString("$GC1!: vix r1, 2565.8, vix r2, 2570.1, vix s1, 2515.7, vix s2, 2511.6, range k max, 2576, range k+50%, 2559.6, range k 0, 2543, range k-50%, 2526.6, range k min, 2510.1, kvo, 2567, kvo, 2551.5, kvo, 2534, kvo, 2517, kvo, 2511.4, kvo, 2537.1 ");
 
 		Input_6_Lines.Name = "Values";
-		Input_6_Lines.SetString("$RTY1!: range k max, 2279, range k+50%, 2253, range k 0, 2227, range k-50%, 2201, range k min, 2175, kvo2, 2273, kvo2, 2261, kvo2, 2238, kvo2, 2231, kvo1, 2225, kvo1, 2222, kvo1, 2214, kvo2, 2188, kvo2, 2179");
+		Input_6_Lines.SetString("$RTY1!: vix r1, 2155.7, vix r2, 2159.3, vix s1, 2113.6, vix s2, 2110.1, range k max, 2181.9, range k+50%, 2159.6, range k 0, 2137.7, range k-50%, 2115.4, range k min, 2093.6, kvo, 2170, kvo, 2147, kvo, 2125, kvo, 2103, kvo, 2133.3, kvo, 2161.4");
+
+		Input_7_Lines.Name = "Values";
+		Input_7_Lines.SetString("$NG1!: vix r1, 2.281, vix r2, 2.285, vix s1, 2.237, vix s2, 2.233, range k max, 2.385, range k+50%, 2.320, range k 0, 2.253, range k-50%, 2.188, range k min, 2.123, kvo, 2.156, kvo, 2.223, kvo, 2.289, kvo, 2.353, kvo, 2.117, kvo, 2.248 ");
+
+		Input_8_Lines.Name = "Values";
+		Input_8_Lines.SetString("$FDAX1!: vix r1, 18766, vix r2, 18797, vix s1, 18399, vix s2, 18369, range k max, 18838, range k+50%, 18732, range k 0, 18625, range k-50%, 18517, range k min, 18410, kvo, 18465, kvo, 18572, kvo, 18680, kvo, 18787");
+
+		Input_9_Lines.Name = "Values";
+		Input_9_Lines.SetString("$SPX: vix r1, 5543, vix r2, 5553, vix s1, 5435, vix s2, 5426, range k max, 5569, kvo, 5552, range k+50%, 5535, kvo, 5519, range k 0, 5503, kvo, 5486, range k-50%, 5470.12, kvo, 5453, range k min, 5437, kvo, 5564 ");
+
+		Input_10_Lines.Name = "Values";
+		Input_10_Lines.SetString("$NDX: vix r1, 19069, vix r2, 19101, vix s1, 18697, vix s2, 18667, range k max, 19225, kvo, 19151, range k+50%, 19078, kvo, 19004, range k 0, 18930, kvo, 18856, range k-50%, 18782, kvo, 18708, range k min, 18634");
 
 		return;
 	}
@@ -198,6 +215,10 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCString s4 = Input_4_Lines.GetString();
 	SCString s5 = Input_5_Lines.GetString();
 	SCString s6 = Input_6_Lines.GetString();
+	SCString s7 = Input_7_Lines.GetString();
+	SCString s8 = Input_8_Lines.GetString();
+	SCString s9 = Input_9_Lines.GetString();
+	SCString s10 = Input_10_Lines.GetString();
 	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
 	SCString chtName = sa.Format("$%s", sa.GetChars());
 	if (chtName.Left(3) == s1.Left(3))
@@ -212,4 +233,12 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 	if (chtName.Left(3) == s6.Left(3))
 		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+	if (chtName.Left(3) == s7.Left(3))
+		DrawLines(s7, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+	if (chtName.Left(3) == s8.Left(3))
+		DrawLines(s8, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+	if (chtName.Left(3) == s9.Left(3))
+		DrawLines(s9, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+	if (chtName.Left(3) == s10.Left(3))
+		DrawLines(s10, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
 }
