@@ -9,7 +9,9 @@ void DrawLines(SCString str,
 	SCSubgraphRef Subgraph_range,
 	SCSubgraphRef Subgraph_min,
 	SCSubgraphRef Subgraph_max,
-	SCSubgraphRef Subgraph_vix)
+	SCSubgraphRef Subgraph_vix, 
+	SCSubgraphRef Subgraph_CT,
+	SCSubgraphRef Subgraph_onr)
 {
 	int idx = 1;
 
@@ -21,7 +23,7 @@ void DrawLines(SCString str,
 
 	std::vector<char*> tokens;
 	sMQ1.Tokenize(", ", tokens);
-	SCString desc, price;
+	SCString desc, price, alls;
 	for (SCString s : tokens)
 	{
 		if (idx % 2 == 0)
@@ -46,6 +48,18 @@ void DrawLines(SCString str,
 			Tool.LineWidth = 1;
 			Tool.LineNumber = idx;
 			Tool.Color = COLOR_GAINSBORO;
+			if (desc.Left(2) == "CT")
+			{
+				Tool.LineStyle = Subgraph_CT.LineStyle;
+				Tool.LineWidth = Subgraph_CT.LineWidth;
+				Tool.Color = Subgraph_CT.PrimaryColor;
+			}
+			if (desc.Left(3) == "onr")
+			{
+				Tool.LineStyle = Subgraph_onr.LineStyle;
+				Tool.LineWidth = Subgraph_onr.LineWidth;
+				Tool.Color = Subgraph_onr.PrimaryColor;
+			}
 			if (desc.Left(2) == "BL")
 			{
 				Tool.LineStyle = Subgraph_BL.LineStyle;
@@ -83,13 +97,15 @@ void DrawLines(SCString str,
 				Tool.Color = Subgraph_max.PrimaryColor;
 			}
 			Tool.FontBold = true;
+			price.Format(",%s", price);
+			alls.Append(price);
 			sc.UseTool(Tool);
 		}
 		else
 			desc = s.GetChars();
 		idx++;
 	}
-
+	sc.SetPersistentSCString(13, alls);
 }
 
 SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
@@ -97,6 +113,7 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCGraphData srcChart;
 	SCGraphData ref;
 	SCString Message = "";
+	SCString vals = sc.GetPersistentSCString(13);
 
 	SCInputRef Input_1_Lines = sc.Input[0];
 	SCInputRef Input_2_Lines = sc.Input[1];
@@ -116,6 +133,9 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_min = sc.Subgraph[3];
 	SCSubgraphRef Subgraph_max = sc.Subgraph[4];
 	SCSubgraphRef Subgraph_vix = sc.Subgraph[5];
+	SCSubgraphRef Subgraph_CT = sc.Subgraph[6];
+	SCSubgraphRef Subgraph_onr = sc.Subgraph[7];
+	SCSubgraphRef Subgraph_DoucheBag = sc.Subgraph[8];
 
 	if (sc.SetDefaults)
 	{
@@ -123,43 +143,60 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
 
+		Subgraph_DoucheBag.Name = "Ignore Me";
+		Subgraph_DoucheBag.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_onr.Name = "CT";
+		Subgraph_onr.PrimaryColor = RGB(125, 199, 40);
+		Subgraph_onr.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_onr.LineStyle = LINESTYLE_SOLID;
+		Subgraph_onr.LineWidth = 1;
+		Subgraph_onr.DrawZeros = false;
+
+		Subgraph_CT.Name = "onr";
+		Subgraph_CT.PrimaryColor = RGB(161, 64, 230);
+		Subgraph_CT.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_CT.LineStyle = LINESTYLE_SOLID;
+		Subgraph_CT.LineWidth = 1;
+		Subgraph_CT.DrawZeros = false;
+
 		Subgraph_vix.Name = "vix";
-		Subgraph_vix.PrimaryColor = COLOR_WHITE;
+		Subgraph_vix.PrimaryColor = RGB(196, 188, 71);
 		Subgraph_vix.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_vix.LineStyle = LINESTYLE_SOLID;
 		Subgraph_vix.LineWidth = 1;
 		Subgraph_vix.DrawZeros = false;
 
 		Subgraph_kvo.Name = "kvo";
-		Subgraph_kvo.PrimaryColor = COLOR_WHITE;
+		Subgraph_kvo.PrimaryColor = RGB(212, 123, 28);
 		Subgraph_kvo.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_kvo.LineStyle = LINESTYLE_SOLID;
 		Subgraph_kvo.LineWidth = 1;
 		Subgraph_kvo.DrawZeros = false;
 
 		Subgraph_BL.Name = "BL";
-		Subgraph_BL.PrimaryColor = COLOR_BLUE;
+		Subgraph_BL.PrimaryColor = RGB(237, 107, 228);
 		Subgraph_BL.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_BL.LineStyle = LINESTYLE_SOLID;
 		Subgraph_BL.LineWidth = 1;
 		Subgraph_BL.DrawZeros = false;
 
 		Subgraph_range.Name = "range";
-		Subgraph_range.PrimaryColor = COLOR_YELLOW;
+		Subgraph_range.PrimaryColor = RGB(120, 127, 255);
 		Subgraph_range.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_range.LineStyle = LINESTYLE_SOLID;
 		Subgraph_range.LineWidth = 1;
 		Subgraph_range.DrawZeros = false;
 
 		Subgraph_min.Name = "min";
-		Subgraph_min.PrimaryColor = COLOR_GREEN;
+		Subgraph_min.PrimaryColor = RGB(0, 255, 110);
 		Subgraph_min.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_min.LineStyle = LINESTYLE_SOLID;
 		Subgraph_min.LineWidth = 1;
 		Subgraph_min.DrawZeros = false;
 
 		Subgraph_max.Name = "max";
-		Subgraph_max.PrimaryColor = COLOR_RED;
+		Subgraph_max.PrimaryColor = RGB(255, 68, 0);
 		Subgraph_max.DrawStyle = DRAWSTYLE_LINE;
 		Subgraph_max.LineStyle = LINESTYLE_SOLID;
 		Subgraph_max.LineWidth = 1;
@@ -169,10 +206,10 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 		Input_RecalcInterval.SetInt(30);
 
 		Input_1_Lines.Name = "Values";
-		Input_1_Lines.SetString("NQ1!: vix r1, 19064, vix r2, 19095, vix s1, 18692, vix s2, 18661, range k max, 19368, range k+50%, 19168, range k 0, 18964, range k-50%, 18762, range k min, 18558, kvo, 19269, kvo, 19070, kvo, 18860, kvo, 18665, kvo, 18563, kvo, 19090");
+		Input_1_Lines.SetString("$NQ1!: vix r1, 18930, vix r2, 18945, vix s1, 18520, vix s2, 18505, range k max, 19118, range k+50%, 18904, range k 0, 18693, range k-50%, 18481, range k min, 18269, kvo, 19011, kvo, 18797, kvo, 18596, kvo, 18374, kvo, 18639, kvo, 19080, BL 5, 18191.67, BL 1, 18427.9, BL 3, 18504.64, BL 9, 18552.27, BL 10, 18607.57, BL 7, 18852.93, BL 6, 19182.46, BL 4, 19251.98, BL 8, 19327.24, BL 2, 19351.52, CT r1, 18916, CT r2, 18929, CT MR1, 19421, CT MR2, 19477, onr1, 18726, onr2, 18737, CT s1, 18225, CT s2, 18214, CT MS1, 17676, CT MS2, 17561");
 
 		Input_2_Lines.Name = "Values";
-		Input_2_Lines.SetString("$ES1!: vix r1, 5552, vix r2, 5561, vix s1, 5443, vix s2, 5434, range k max, 5593, kvo, 5573, range k+50%, 5554, kvo, 5532, range k 0, 5511.5, kvo, 5491, range k-50%, 5470.50, kvo, 5450, range k min, 5429.50, kvo, 5555.50, kvo, 5503");
+		Input_2_Lines.SetString("$ES1!: vix r1, 5533, vix r2, 5538, vix s1, 5428, vix s2, 5423, range k max, 5567, range k+50%, 5523, range k 0, 5479, range k-50%, 5435, range k min, 5392, kvo, 5545, kvo, 5501, kvo, 5457, kvo, 5413, kvo, 5465, kvo, 5554, CT r1, 5515, CT r2, 5527, CT MR1, 5624, CT MR2, 5626, onr1, 5488, onr2, 5491, CT s1, 5281, CT s2, 5280, CT MS1, 5165, CT MS2, 5159");
 
 		Input_3_Lines.Name = "Values";
 		Input_3_Lines.SetString("$YM1!: vix r1, 41173, vix r2, 41242, vix s1, 40370, vix s2, 40303, range k max, 41323, kvo, 41235, range k+50%, 41076, kvo, 40995, range k 0, 40832, kvo, 40750, range k-50%, 40581, kvo, 40504, range k min, 40339, kvo, 40849, kvo, 41211");
@@ -222,23 +259,23 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
 	SCString chtName = sa.Format("$%s", sa.GetChars());
 	if (chtName.Left(3) == s1.Left(3))
-		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s2.Left(3))
-		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s3.Left(3))
-		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s4.Left(3))
-		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s5.Left(3))
-		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s6.Left(3))
-		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s7.Left(3))
-		DrawLines(s7, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s7, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s8.Left(3))
-		DrawLines(s8, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s8, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s9.Left(3))
-		DrawLines(s9, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s9, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 	if (chtName.Left(3) == s10.Left(3))
-		DrawLines(s10, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix);
+		DrawLines(s10, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
 }
