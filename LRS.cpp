@@ -11,12 +11,12 @@ SCSFExport scsf_LinearRegSlopeWithColor(SCStudyInterfaceRef sc)
     SCInputRef SlopeLineColorNormal = sc.Input[4];
 
     SCFloatArrayRef LinearRegSlope = sc.Subgraph[0].Data;
-    SCSubgraphRef SlopeLine = sc.Subgraph[0];
-    SCSubgraphRef LineZero = sc.Subgraph[1];
-    SCSubgraphRef BackColor = sc.Subgraph[2];
-    SCSubgraphRef Histogram = sc.Subgraph[3];
-    SCSubgraphRef Smoothed = sc.Subgraph[4];
-    SCSubgraphRef Smoothed2 = sc.Subgraph[5];
+    SCSubgraphRef LineZero = sc.Subgraph[0];
+    SCSubgraphRef BackColor = sc.Subgraph[1];
+    SCSubgraphRef Histogram = sc.Subgraph[2];
+    SCSubgraphRef Smoothed = sc.Subgraph[3];
+    SCSubgraphRef Smoothed2 = sc.Subgraph[4];
+    SCSubgraphRef SlopeLine = sc.Subgraph[5];
 
     if (sc.SetDefaults)
     {
@@ -46,30 +46,30 @@ SCSFExport scsf_LinearRegSlopeWithColor(SCStudyInterfaceRef sc)
     }
 
     BackColor.Name = "Background on Cross";
-    BackColor.DrawStyle = DRAWSTYLE_BACKGROUND;
+    BackColor.DrawStyle = DRAWSTYLE_BACKGROUND_TRANSPARENT;
     BackColor.PrimaryColor = RGB(255, 0, 0);
     BackColor.LineWidth = 5;
+
+    LineZero.Name = "Zero Line";
+    LineZero.DrawStyle = DRAWSTYLE_LINE;
+    LineZero.PrimaryColor = RGB(255, 255, 255);
+    LineZero.LineWidth = 2;
+    LineZero.DrawZeros = true;
+
+    Histogram.Name = "Histogram";
+    Histogram.DrawStyle = DRAWSTYLE_BAR_BOTTOM;
+    Histogram.PrimaryColor = RGB(80, 80, 80);
+    Histogram.LineWidth = 7;
+    Histogram.DrawZeros = false;
+
+    Smoothed.Name = "Smoothed";
+    Smoothed.DrawStyle = DRAWSTYLE_IGNORE;
+    Smoothed.DrawZeros = false;
 
     SlopeLine.Name = "Linear Regressive Slope";
     SlopeLine.DrawStyle = DRAWSTYLE_LINE;
     SlopeLine.PrimaryColor = SlopeLineColorNormal.GetColor();
     SlopeLine.LineWidth = 3;
-
-    LineZero.Name = "Zero Line";
-    LineZero.DrawStyle = DRAWSTYLE_LINE;
-    LineZero.PrimaryColor = RGB(255, 255, 255);
-    LineZero.LineWidth = 1;
-    LineZero.DrawZeros = true;
-
-    Histogram.Name = "Histogram";
-    Histogram.DrawStyle = DRAWSTYLE_BARBOTTOM;
-    Histogram.PrimaryColor = RGB(80, 80, 80);
-    Histogram.LineWidth = 7;
-    Histogram.DrawZeros = true;
-
-    Smoothed.Name = "Smoothed";
-    Smoothed.DrawStyle = DRAWSTYLE_IGNORE;
-    Smoothed.DrawZeros = true;
 
     // Linear Regression Slope
     // lrs = (lrc - lrc[1]) / 1
@@ -85,10 +85,10 @@ SCSFExport scsf_LinearRegSlopeWithColor(SCStudyInterfaceRef sc)
 
     // uacce = lrs > alrs and lrs > 0
     if (LinearRegSlope[sc.Index] > Histogram[sc.Index] && LinearRegSlope[sc.Index - 1] > 0)
-        Histogram.DataColor[sc.Index] = RGB(0, 112, 30);
+        Histogram.DataColor[sc.Index] = RGB(0, 182, 30);
     // dacce = lrs < alrs and lrs < 0
     else if (LinearRegSlope[sc.Index] < Histogram[sc.Index] && LinearRegSlope[sc.Index - 1] < 0)
-        Histogram.DataColor[sc.Index] = RGB(110, 18, 0);
+        Histogram.DataColor[sc.Index] = RGB(180, 18, 0);
     else
         Histogram.DataColor[sc.Index] = RGB(88, 88, 88);
 
@@ -107,13 +107,15 @@ SCSFExport scsf_LinearRegSlopeWithColor(SCStudyInterfaceRef sc)
 
     if (LinearRegSlope[sc.Index] > OuterEdge.GetFloat())
     {
-	SlopeLine.LineWidth = 4;
+	    SlopeLine.LineWidth = 4;
         SlopeLine.DataColor[sc.Index] = SlopeLineColorAboveThreshold.GetColor();
+        Histogram.DataColor[sc.Index] = SlopeLineColorAboveThreshold.GetColor();
     }
     else if (LinearRegSlope[sc.Index] < OuterEdge.GetFloat() * -1)
     {
-	SlopeLine.LineWidth = 4;
+	    SlopeLine.LineWidth = 4;
         SlopeLine.DataColor[sc.Index] = SlopeLineColorBelowThreshold.GetColor();
+        Histogram.DataColor[sc.Index] = SlopeLineColorBelowThreshold.GetColor();
     }
     else
     {
