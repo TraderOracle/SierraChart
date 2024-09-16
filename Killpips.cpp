@@ -11,7 +11,8 @@ void DrawLines(SCString str,
 	SCSubgraphRef Subgraph_max,
 	SCSubgraphRef Subgraph_vix, 
 	SCSubgraphRef Subgraph_CT,
-	SCSubgraphRef Subgraph_onr)
+	SCSubgraphRef Subgraph_onr,
+	SCSubgraphRef Subgraph_DP)
 {
 	int idx = 1;
 
@@ -48,49 +49,57 @@ void DrawLines(SCString str,
 			Tool.LineWidth = 1;
 			Tool.LineNumber = idx;
 			Tool.Color = COLOR_GAINSBORO;
-			if (desc.Left(2) == "CT")
+
+			std::string str = desc.GetChars();
+			if (str.find(" DP ") != std::string::npos) 
+			{
+				Tool.LineStyle = Subgraph_DP.LineStyle;
+				Tool.LineWidth = Subgraph_DP.LineWidth;
+				Tool.Color = Subgraph_DP.PrimaryColor;
+			}
+			if (str.find("CT ") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_CT.LineStyle;
 				Tool.LineWidth = Subgraph_CT.LineWidth;
 				Tool.Color = Subgraph_CT.PrimaryColor;
 			}
-			if (desc.Left(3) == "onr")
+			if (str.find("onr") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_onr.LineStyle;
 				Tool.LineWidth = Subgraph_onr.LineWidth;
 				Tool.Color = Subgraph_onr.PrimaryColor;
 			}
-			if (desc.Left(2) == "BL")
+			if (str.find("BL ") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_BL.LineStyle;
 				Tool.LineWidth = Subgraph_BL.LineWidth;
 				Tool.Color = Subgraph_BL.PrimaryColor;
 			}
-			if (desc.Left(3) == "vix" || desc.Left(3) == "HVL")
+			if (str.find("vix") != std::string::npos || str.find("HVL") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_vix.LineStyle;
 				Tool.LineWidth = Subgraph_vix.LineWidth;
 				Tool.Color = Subgraph_vix.PrimaryColor;
 			}
-			if (desc.Left(3) == "kvo" || desc.Left(3) == "GEX")
+			if (str.find("kvo") != std::string::npos || str.find("GEX") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_kvo.LineStyle;
 				Tool.LineWidth = Subgraph_kvo.LineWidth;
 				Tool.Color = Subgraph_kvo.PrimaryColor;
 			}
-			if (desc.Left(5) == "range" || desc.Right(3) == "ort")
+			if (str.find("range") != std::string::npos || str.find("Short") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_range.LineStyle;
 				Tool.LineWidth = Subgraph_range.LineWidth;
 				Tool.Color = Subgraph_range.PrimaryColor;
 			}
-			if (desc.Right(2) == "in" || desc.Left(3) == "HVL")
+			if (str.find("Min") != std::string::npos || str.find("HVL") != std::string::npos || str.find("min") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_min.LineStyle;
 				Tool.LineWidth = Subgraph_min.LineWidth;
 				Tool.Color = Subgraph_min.PrimaryColor;
 			}
-			if (desc.Right(2) == "ax")
+			if (str.find("Max") != std::string::npos || str.find("max") != std::string::npos)
 			{
 				Tool.LineStyle = Subgraph_max.LineStyle;
 				Tool.LineWidth = Subgraph_max.LineWidth;
@@ -135,7 +144,8 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCSubgraphRef Subgraph_vix = sc.Subgraph[5];
 	SCSubgraphRef Subgraph_CT = sc.Subgraph[6];
 	SCSubgraphRef Subgraph_onr = sc.Subgraph[7];
-	SCSubgraphRef Subgraph_DoucheBag = sc.Subgraph[8];
+	SCSubgraphRef Subgraph_DP = sc.Subgraph[8];
+	SCSubgraphRef Subgraph_DoucheBag = sc.Subgraph[9];
 
 	if (sc.SetDefaults)
 	{
@@ -145,6 +155,13 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 
 		Subgraph_DoucheBag.Name = "Ignore Me";
 		Subgraph_DoucheBag.DrawStyle = DRAWSTYLE_IGNORE;
+
+		Subgraph_DP.Name = "DP";
+		Subgraph_DP.PrimaryColor = RGB(125, 199, 40);
+		Subgraph_DP.DrawStyle = DRAWSTYLE_LINE;
+		Subgraph_DP.LineStyle = LINESTYLE_SOLID;
+		Subgraph_DP.LineWidth = 1;
+		Subgraph_DP.DrawZeros = false;
 
 		Subgraph_onr.Name = "CT";
 		Subgraph_onr.PrimaryColor = RGB(125, 199, 40);
@@ -259,23 +276,23 @@ SCSFExport scsf_Killpips_Levels(SCStudyInterfaceRef sc)
 	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
 	SCString chtName = sa.Format("$%s", sa.GetChars());
 	if (chtName.Left(3) == s1.Left(3))
-		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s1, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s2.Left(3))
-		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s2, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s3.Left(3))
-		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s3, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s4.Left(3))
-		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s4, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s5.Left(3))
-		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s5, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s6.Left(3))
-		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s6, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s7.Left(3))
-		DrawLines(s7, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s7, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s8.Left(3))
-		DrawLines(s8, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s8, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s9.Left(3))
-		DrawLines(s9, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s9, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 	if (chtName.Left(3) == s10.Left(3))
-		DrawLines(s10, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr);
+		DrawLines(s10, sc, Subgraph_kvo, Subgraph_BL, Subgraph_range, Subgraph_min, Subgraph_max, Subgraph_vix, Subgraph_CT, Subgraph_onr, Subgraph_DP);
 }
