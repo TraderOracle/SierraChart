@@ -582,14 +582,17 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
 #pragma region LOCAL VARIABLES
 
-    const int ALERT_BBGAP_GREEN = 20;
-    const int ALERT_BBGAP_RED = 21;
-    const int ALERT_VOLIMB_GREEN = 22;
-    const int ALERT_VOLIMB_RED = 23;
-    const int ALERT_BUY = 23;
-    const int ALERT_SELL = 23;
-    const int TRAMP_GREEN = 23;
-    const int TRAMP_RED = 23;
+    const int ALERT_BBGAP_GREEN = 21;
+    const int ALERT_BBGAP_RED = 22;
+    const int ALERT_VOLIMB_GREEN = 17;
+    const int ALERT_VOLIMB_RED = 17;
+    const int ALERT_VOLIMB_FILL = 19;
+    const int ALERT_BUY = 7;
+    const int ALERT_SELL = 8;
+    const int ALERT_TRAMP_GREEN = 23;
+    const int ALERT_TRAMP_RED = 24;
+    const int ALERT_KAMA_WICK = 36;
+    const int ALERT_KAMA = 37;
 
     const int i = sc.Index;
     auto &r_SqueezeUp{sc.GetPersistentInt(0)};
@@ -627,21 +630,22 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     auto CurrentLineCount = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
     static const int NotYetInitialized = -1;
     auto &IsInitialized = sc.GetPersistentInt(2);
+    auto AlreadyAlertedBar{0};
     // int X = sc.BarIndexToXPixelCoordinate(i);
     // int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
+    bool bIsCurrentBar = false;
+    bool sqRelaxUp;
+    bool bSuperUp;
+
+    if (i == sc.ArraySize - 2)
+        bIsCurrentBar = true;
+
 #pragma endregion
 
 #pragma region INDICATORS
 
     //	for (int i = sc.UpdateStartIndex; i < sc.ArraySize; i++)
     {
-        bool bIsCurrentBar = false;
-        bool sqRelaxUp;
-        bool bSuperUp;
-
-        if (i < sc.ArraySize - 1)
-            bIsCurrentBar = true;
-
         // SUPER TREND
         int ATRMultiplier = 2;
         int ATRPeriod = 11;
@@ -784,7 +788,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             // The SubgraphArray may not exist or is empty. Either way we can not do anything with it.
         }
 
-        auto dTickie{Input_ShavedBuffer.GetInt() * sc.TickSize};
+        float dTickie = Input_ShavedBuffer.GetInt() * sc.TickSize;
         if (Input_IgnoreDoji.GetYesNo() == SC_YES && doji)
             return;
 
@@ -801,40 +805,40 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         static bool dataLoaded = false;
         bool bBarClosed = (sc.GetBarHasClosedStatus() == BHCS_BAR_HAS_CLOSED);
+        /*
+                if (false) {
+                    // Detect volimb line close
+                    auto iEndings{0};
+                    const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
+                    if (numLines != 0) {
+                        for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex) {
+                            int32_t lineID{0};
+                            int32_t startIndex{0};
+                            int32_t endIndex{0};
+                            float lineValue{0.0f};
 
-        if (false) {
-            // Detect volimb line close
-            auto iEndings{0};
-            const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
-            if (numLines != 0) {
-                for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex) {
-                    int32_t lineID{0};
-                    int32_t startIndex{0};
-                    int32_t endIndex{0};
-                    float lineValue{0.0f};
-
-                    if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex))
-                    {
-                        if (endIndex > 0) {
-                            iEndings++;
-                            DrawText(sc, Subgraph_3oU, "shit", 0, 5);
-                            //sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
-                            Subgraph_Intersection[i] = endIndex;
+                            if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex))
+                            {
+                                if (endIndex > 0) {
+                                    iEndings++;
+                                    DrawText(sc, Subgraph_3oU, "shit", 0, 5);
+                                    //sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
+                                    Subgraph_Intersection[i] = endIndex;
+                                }
+                            }
                         }
                     }
+                    Subgraph_Intersection[i] = iEndings;
+
+                    if (bBarClosed) {
+                        std::stringstream message;
+                        message << "New bar closed - "
+                                << "Symbol: " << sc.Symbol.GetChars() << ", "
+                                << "Close: " << sc.Close[sc.Index] << ", "
+                                << "Volume: " << sc.Volume[sc.Index];
+                    }
                 }
-            }
-            Subgraph_Intersection[i] = iEndings;
-
-            if (bBarClosed) {
-                std::stringstream message;
-                message << "New bar closed - "
-                        << "Symbol: " << sc.Symbol.GetChars() << ", "
-                        << "Close: " << sc.Close[sc.Index] << ", "
-                        << "Volume: " << sc.Volume[sc.Index];
-            }
-        }
-
+        */
         if (Subgraph_Intersection[i] > Subgraph_Intersection[i - 1] &&
             !IsVolImbGreen(sc, i - 1) && !IsVolImbGreen(sc, i - 2) &&
             !IsVolImbRed(sc, i - 1) && !IsVolImbRed(sc, i - 2)) {
@@ -864,13 +868,17 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         if (IsTrampoline(sc, i, rsi, prsi, pprsi, UpperBand, sc.TickSize)) {
             DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
             Subgraph_Tramp[i] = sc.Low[i];
-            if (sc.IsNewBar(i))
-                sc.AlertWithMessage(TRAMP_GREEN, "");
+            if (bIsCurrentBar) {
+                sc.AddMessageToLog(txt.Format("ALERT_TRAMP_GREEN"), 1);
+                sc.AlertWithMessage(ALERT_TRAMP_GREEN, "");
+            }
         } else if (IsTrampoline(sc, i, rsi, prsi, pprsi, LowerBand, sc.TickSize)) {
             DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
             Subgraph_Tramp[i] = sc.Low[i];
-            if (sc.IsNewBar(i))
-                sc.AlertWithMessage(TRAMP_RED, "");
+            if (bIsCurrentBar) {
+                sc.AddMessageToLog(txt.Format("ALERT_TRAMP_RED"), 1);
+                sc.AlertWithMessage(ALERT_TRAMP_RED, "");
+            }
         }
 
         if (Input_BarColor.GetIndex() != 0)
@@ -931,22 +939,43 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         if (bShowUp) {
             Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
-            txt.Format("BUY Signal at %.2d", close);
-            // sc.AddMessageToLog(txt, 0);
-            if (sc.IsNewBar(i))
+            if (true) {
+                sc.AddMessageToLog(txt.Format("BUY Signal"), 1);
                 sc.AlertWithMessage(ALERT_BUY, "BUY Signal");
+            }
         }
 
         if (bShowDown) {
             Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
-            txt.Format("SELL Signal at %.2d", close);
-            if (sc.IsNewBar(i))
+            if (true) {
+                sc.AddMessageToLog(txt.Format("SELL Signal"), 1);
                 sc.AlertWithMessage(ALERT_SELL, "SELL Signal");
+            }
+        }
+
+        // KAMA BOUNCE
+        if (bBarClosed && high > kama && open < kama && close < kama) {
+            sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+            sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+        }
+        if (bBarClosed && low < kama && open > kama && close > kama) {
+            sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+            sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+        }
+        //if (true)
+            //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
+
+        if (bBarClosed) {
+            //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
         }
 
         // CHECK FOR VOLIMB FINISHES
         if (bBarClosed) {
-            auto LineIDForBar{0}; auto StartIndex{0}; auto LineValue{0.0f}; auto endIndex{0};
+            //sc.AddMessageToLog(txt.Format("Checking NumLines status"), 1);
+            auto LineIDForBar{0};
+            auto StartIndex{0};
+            auto LineValue{0.0f};
+            auto endIndex{0};
             int NumLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
             for (NumLines; NumLines >= 0; NumLines--) {
                 sc.GetStudyLineUntilFutureIntersectionByIndex(
@@ -958,47 +987,55 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                     LineValue,
                     endIndex);
 
+                // GREEN volimb interception
                 if (low < LineValue && Subgraph_VolImbDirection[StartIndex] == 1) {
                     Subgraph_VolImbDirection[StartIndex] = 0;
-                    if ((i - StartIndex) > 3) {
-                        txt.Format("VB intercept: origin %d current %d price %f low %f", StartIndex, i, LineValue, low);
-                        sc.AddMessageToLog(txt, 0);
+                    if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
+                        //if (sc.IsNewBar(i)) {
+                        txt.Format("gVB intercept: o %d c %d price %f low %f", StartIndex, i, LineValue, low);
+                        sc.AddMessageToLog(txt, 1);
+                        sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
+                        //}
                     }
                     break;
                 }
+
                 // RED volimb interception
                 if (high > LineValue && Subgraph_VolImbDirection[StartIndex] == -1) {
                     Subgraph_VolImbDirection[StartIndex] = 0;
-                    if ((i - StartIndex) > 3) {
-                        txt.Format("VB intercept: origin %d current %d price %f high %f", StartIndex, i, LineValue, high);
-                        sc.AddMessageToLog(txt, 0);
+                    if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
+                        if (true) {
+                            txt.Format("rVB intercept: o %d c %d price %f high %f", StartIndex, i, LineValue, high);
+                            sc.AddMessageToLog(txt, 1);
+                            sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
+                        }
                     }
                     break;
                 }
             }
         }
-
-        if (bBarClosed && !IsVolImbGreen(sc, sc.CurrentIndex) && !IsVolImbRed(sc, sc.CurrentIndex) && sc.IsNewBar(i))
-        for (int iW = sc.ArraySize - 1; iW >= 0; iW--)
-        {
-            if (Subgraph_VolImbDirection[iW] != 0 && Subgraph_VolImbPrice[iW] != 0) {
-                // GREEN volimb interception
-                if (low < Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == 1) {
-                    Subgraph_VolImbDirection[iW] = 0;
-                    txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], low);
-                    sc.AddMessageToLog(txt, 0);
-                    break;
+        /*
+                if (bBarClosed && !IsVolImbGreen(sc, sc.CurrentIndex) && !IsVolImbRed(sc, sc.CurrentIndex) && sc.IsNewBar(i))
+                for (int iW = sc.ArraySize - 1; iW >= 0; iW--)
+                {
+                    if (Subgraph_VolImbDirection[iW] != 0 && Subgraph_VolImbPrice[iW] != 0) {
+                        // GREEN volimb interception
+                        if (low < Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == 1) {
+                            Subgraph_VolImbDirection[iW] = 0;
+                            txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], low);
+                            sc.AddMessageToLog(txt, 0);
+                            break;
+                        }
+                        // RED volimb interception
+                        if (high > Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == -1) {
+                            Subgraph_VolImbDirection[iW] = 0;
+                            txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], high);
+                            sc.AddMessageToLog(txt, 0);
+                            break;
+                        }
+                    }
                 }
-                // RED volimb interception
-                if (high > Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == -1) {
-                    Subgraph_VolImbDirection[iW] = 0;
-                    txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], high);
-                    sc.AddMessageToLog(txt, 0);
-                    break;
-                }
-            }
-        }
-
+        */
         Subgraph_VolImbUp[i] = 0;
         Subgraph_VolImbDown[i] = 0;
         Subgraph_VolImbOriginCandle[i] = 0;
@@ -1013,13 +1050,17 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             Subgraph_VolImbPrice[i] = open;
 
             // Send alerts
-            txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
+            //txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
             //sc.AddMessageToLog(txt, 0);
-            if (sc.IsNewBar(i)) {
+            if (bBarClosed) {
                 // Is BB gap god trade
-                if (plow < LowerBand || low < LowerBand)
+                if (plow < LowerBand || low < LowerBand) {
+                    sc.AddMessageToLog(txt.Format("God trade GREEN at %.2d", close), 1);
                     sc.AlertWithMessage(ALERT_BBGAP_GREEN, "Green Volume Imbalance");
+                }
+
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
+                sc.AddMessageToLog(txt.Format("Green Volume Imbalance at %.2d", close), 1);
                 sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance");
                 //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
                 //     sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance ES");
@@ -1034,19 +1075,25 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             Subgraph_VolImbPrice[i] = open;
 
             // Send alerts
-            txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
-            //sc.AddMessageToLog(txt, 0);
-            if (sc.IsNewBar(i)) {
+            //txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
+            //sc.AddMessageToLog(txt.Format(txt", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars(), 0);
+            if (bBarClosed) {
                 // Is BB gap god trade?
-                if (phigh > UpperBand || high < UpperBand)
+                if (phigh > UpperBand || high < UpperBand) {
+                    sc.AddMessageToLog(txt.Format("BBGap God Trade RED at %.2d", close), 1);
                     sc.AlertWithMessage(ALERT_BBGAP_RED, "BBGap God Trade");
+                } else {
+                    sc.AddMessageToLog(txt.Format("Red Volume Imbalance at %.2d", close), 1);
+                    sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
+                }
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
-                sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
+                //sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
                 //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
                 //    sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance ES");
             }
         }
 
+        /*
         // sc.StudyGraphInstanceID identifies this study instance
         auto LineIDForBar{0};
         auto StartIndex{0};
@@ -1066,21 +1113,17 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                 endIndex);
 
             if (endIndex == 0) {
-                //            if (AlreadyAlertedBar != i)
-                {
+                if (AlreadyAlertedBar != i && sc.IsNewBar(i)) {
                     SCString Message;
-                    Message.Format(
-                        "Line ID %d (started at bar %d, value %.5f) intersected on current bar %d",
-                        LineIDForBar, StartIndex, LineValue, endIndex
+                    Message.Format("Line ID %d (started at bar %d, value %.5f) intersected on current bar %d",LineIDForBar, StartIndex, LineValue, endIndex
                     );
-
                     sc.AddMessageToLog(Message, 0);
                     sc.AlertWithMessage(1, Message);
-
-                    //AlreadyAlertedBar = i;
+                    AlreadyAlertedBar = i;
                 }
             } // endIndex
         } // Numlines loop
+        */
     }
 
 #pragma endregion
