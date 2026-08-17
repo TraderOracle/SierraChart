@@ -582,17 +582,31 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
 #pragma region LOCAL VARIABLES
 
-    const int ALERT_BBGAP_GREEN = 21;
-    const int ALERT_BBGAP_RED = 22;
-    const int ALERT_VOLIMB_GREEN = 17;
-    const int ALERT_VOLIMB_RED = 17;
-    const int ALERT_VOLIMB_FILL = 19;
-    const int ALERT_BUY = 7;
-    const int ALERT_SELL = 8;
-    const int ALERT_TRAMP_GREEN = 23;
-    const int ALERT_TRAMP_RED = 24;
-    const int ALERT_KAMA_WICK = 36;
-    const int ALERT_KAMA = 37;
+    int ALERT_KAMA = 13;
+    int ALERT_KAMA_WICK = 13;
+
+    int ALERT_BUY = 5;
+    int ALERT_SELL = 6;
+    int ALERT_BBGAP_GREEN = 21;
+    int ALERT_BBGAP_RED = 22;
+    int ALERT_VOLIMB_GREEN = 17;
+    int ALERT_VOLIMB_RED = 17;
+    int ALERT_VOLIMB_FILL = 19;
+    int ALERT_TRAMP_GREEN = 23;
+    int ALERT_TRAMP_RED = 24;
+    if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
+        ALERT_BUY = 3;
+        ALERT_SELL = 4;
+        ALERT_BBGAP_GREEN = 21;
+        ALERT_BBGAP_RED = 22;
+        ALERT_VOLIMB_GREEN = 18;
+        ALERT_VOLIMB_RED = 18;
+        ALERT_VOLIMB_FILL = 20;
+        ALERT_TRAMP_GREEN = 23;
+        ALERT_TRAMP_RED = 24;
+    } else if (strstr(sc.Symbol.GetChars(), "ES") != NULL) {
+    } else {
+    }
 
     const int i = sc.Index;
     auto &r_SqueezeUp{sc.GetPersistentInt(0)};
@@ -964,12 +978,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                 sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
             }
         }
-        //if (true)
-            //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
 
-        if (bBarClosed) {
-            //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
-        }
+        //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
+        //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
 
         // CHECK FOR VOLIMB FINISHES
         if (bBarClosed) {
