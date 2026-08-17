@@ -910,9 +910,6 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         bool bShowUp = true;
         bool bShowDown = true;
 
-        if (!bIsCurrentBar)
-            return;
-
         if (
             (Input_UseMacd.GetYesNo() == SC_YES && linda < 0) ||
             (Input_UseSar.GetYesNo() == SC_YES && SAR > close) ||
@@ -939,28 +936,33 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         if (bShowUp) {
             Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
-            if (true) {
-                sc.AddMessageToLog(txt.Format("BUY Signal"), 1);
+            if (bIsCurrentBar) {
                 sc.AlertWithMessage(ALERT_BUY, "BUY Signal");
+                sc.AddMessageToLog(txt.Format("BUY Signal"), 1);
             }
         }
 
         if (bShowDown) {
             Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
-            if (true) {
-                sc.AddMessageToLog(txt.Format("SELL Signal"), 1);
+            if (bIsCurrentBar) {
                 sc.AlertWithMessage(ALERT_SELL, "SELL Signal");
+                sc.AddMessageToLog(txt.Format("SELL Signal"), 1);
             }
         }
 
+        if (!bIsCurrentBar)
+            return;
+
         // KAMA BOUNCE
-        if (bBarClosed && high > kama && open < kama && close < kama) {
-            sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-            sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
-        }
-        if (bBarClosed && low < kama && open > kama && close > kama) {
-            sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-            sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+        if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
+            if (bBarClosed && high > kama && open < kama && close < kama) {
+                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+            }
+            if (bBarClosed && low < kama && open > kama && close > kama) {
+                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+            }
         }
         //if (true)
             //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
@@ -1055,12 +1057,12 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             if (bBarClosed) {
                 // Is BB gap god trade
                 if (plow < LowerBand || low < LowerBand) {
-                    sc.AddMessageToLog(txt.Format("God trade GREEN at %.2d", close), 1);
+                    sc.AddMessageToLog(txt.Format("God trade GREEN at %d", sc.CurrentIndex), 1);
                     sc.AlertWithMessage(ALERT_BBGAP_GREEN, "Green Volume Imbalance");
                 }
 
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
-                sc.AddMessageToLog(txt.Format("Green Volume Imbalance at %.2d", close), 1);
+                sc.AddMessageToLog(txt.Format("Green Volume Imbalance at %d", sc.CurrentIndex), 1);
                 sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance");
                 //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
                 //     sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance ES");
@@ -1079,11 +1081,11 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             //sc.AddMessageToLog(txt.Format(txt", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars(), 0);
             if (bBarClosed) {
                 // Is BB gap god trade?
-                if (phigh > UpperBand || high < UpperBand) {
-                    sc.AddMessageToLog(txt.Format("BBGap God Trade RED at %.2d", close), 1);
+                if (phigh > UpperBand || high > UpperBand) {
+                    sc.AddMessageToLog(txt.Format("BBGap God Trade RED at %d", sc.CurrentIndex), 1);
                     sc.AlertWithMessage(ALERT_BBGAP_RED, "BBGap God Trade");
                 } else {
-                    sc.AddMessageToLog(txt.Format("Red Volume Imbalance at %.2d", close), 1);
+                    sc.AddMessageToLog(txt.Format("Red Volume Imbalance at %d", sc.CurrentIndex), 1);
                     sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
                 }
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
