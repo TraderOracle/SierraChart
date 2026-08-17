@@ -799,20 +799,15 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         SCFloatArray SubgraphArray;
         sc.GetStudyArray(11, 3, SubgraphArray);
-        if (SubgraphArray.GetArraySize() == 0) {
-            // The SubgraphArray may not exist or is empty. Either way we can not do anything with it.
-        }
+        //if (SubgraphArray.GetArraySize() == 0)
 
-        float dTickie = Input_ShavedBuffer.GetInt() * sc.TickSize;
         if (Input_IgnoreDoji.GetYesNo() == SC_YES && doji)
             return;
 
         if (red && close == low)
             Subgraph_ShavedRed[i] = 1;
-
         if (low < LowerBand && plow < LowerBand && green && body > pbody)
             Subgraph_BBGreen[i] = 1;
-
         if (high > UpperBand && phigh > UpperBand && red && body > pbody)
             Subgraph_BBRed[i] = 1;
 
@@ -982,6 +977,12 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
 #pragma endregion
 
+        if (IsVolImbGreen(sc, sc.CurrentIndex))
+            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+
+        if (IsVolImbRed(sc, sc.CurrentIndex))
+            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+
         if (!bIsCurrentBar)
             return;
 
@@ -1011,11 +1012,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                 if (low < LineValue && Subgraph_VolImbDirection[StartIndex] == 1) {
                     Subgraph_VolImbDirection[StartIndex] = 0;
                     if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
-                        //if (sc.IsNewBar(i)) {
                         txt.Format("gVB intercept: o %d c %d price %f low %f", StartIndex, i, LineValue, low);
                         sc.AddMessageToLog(txt, 1);
                         sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
-                        //}
                     }
                     break;
                 }
@@ -1024,11 +1023,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                 if (high > LineValue && Subgraph_VolImbDirection[StartIndex] == -1) {
                     Subgraph_VolImbDirection[StartIndex] = 0;
                     if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
-                        if (true) {
                             txt.Format("rVB intercept: o %d c %d price %f high %f", StartIndex, i, LineValue, high);
                             sc.AddMessageToLog(txt, 1);
                             sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
-                        }
                     }
                     break;
                 }
@@ -1063,7 +1060,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_VolImbPrice[i] = 0;
 
         if (IsVolImbGreen(sc, sc.CurrentIndex)) {
-            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbUp[i] = low - ((Input_UpOffset.GetInt()) * sc.TickSize);
             Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
             Subgraph_VolImbDirection[i] = 1;
@@ -1088,7 +1085,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         }
 
         if (IsVolImbRed(sc, sc.CurrentIndex)) {
-            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbDown[i] = high + ((Input_UpOffset.GetInt()) * sc.TickSize);
             Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
             Subgraph_VolImbDirection[i] = -1;
