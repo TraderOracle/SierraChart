@@ -582,6 +582,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
 #pragma region LOCAL VARIABLES
 
+    int ALERT_EMA21_WICK = 12;
     int ALERT_KAMA = 13;
     int ALERT_KAMA_WICK = 13;
 
@@ -595,8 +596,8 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     int ALERT_TRAMP_GREEN = 23;
     int ALERT_TRAMP_RED = 24;
     if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
-        ALERT_BUY = 3;
-        ALERT_SELL = 4;
+        ALERT_BUY = 7;
+        ALERT_SELL = 8;
         ALERT_BBGAP_GREEN = 21;
         ALERT_BBGAP_RED = 22;
         ALERT_VOLIMB_GREEN = 18;
@@ -884,14 +885,14 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             Subgraph_Tramp[i] = sc.Low[i];
             if (bIsCurrentBar) {
                 sc.AddMessageToLog(txt.Format("ALERT_TRAMP_GREEN"), 1);
-                sc.AlertWithMessage(ALERT_TRAMP_GREEN, "");
+                //sc.AlertWithMessage(ALERT_TRAMP_GREEN, "");
             }
         } else if (IsTrampoline(sc, i, rsi, prsi, pprsi, LowerBand, sc.TickSize)) {
             DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
             Subgraph_Tramp[i] = sc.Low[i];
             if (bIsCurrentBar) {
                 sc.AddMessageToLog(txt.Format("ALERT_TRAMP_RED"), 1);
-                sc.AlertWithMessage(ALERT_TRAMP_RED, "");
+                //sc.AlertWithMessage(ALERT_TRAMP_RED, "");
             }
         }
 
@@ -1074,7 +1075,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
                 sc.AddMessageToLog(txt.Format("Green Volume Imbalance at %d", sc.CurrentIndex), 1);
-                sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance");
+                //sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance");
                 //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
                 //     sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance ES");
             }
@@ -1097,7 +1098,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                     sc.AlertWithMessage(ALERT_BBGAP_RED, "BBGap God Trade");
                 } else {
                     sc.AddMessageToLog(txt.Format("Red Volume Imbalance at %d", sc.CurrentIndex), 1);
-                    sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
+                    //sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
                 }
                 //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
                 //sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
