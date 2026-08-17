@@ -816,10 +816,10 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         if (high > UpperBand && phigh > UpperBand && red && body > pbody)
             Subgraph_BBRed[i] = 1;
 
-#pragma region BUY SELL PLOTS
-
         static bool dataLoaded = false;
         bool bBarClosed = (sc.GetBarHasClosedStatus() == BHCS_BAR_HAS_CLOSED);
+
+#pragma region EXTRA ALERTS
         /*
                 if (false) {
                     // Detect volimb line close
@@ -895,7 +895,20 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
                 //sc.AlertWithMessage(ALERT_TRAMP_RED, "");
             }
         }
+        // KAMA BOUNCE
+        if (bIsCurrentBar && bBarClosed && strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
+            if (high > kama && open < kama && close < kama) {
+                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+            }
+            if (low < kama && open > kama && close > kama) {
+                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
+                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
+            }
+        }
+#pragma endregion
 
+#pragma region BAR COLORING
         if (Input_BarColor.GetIndex() != 0)
             sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
 
@@ -921,7 +934,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             else
                 Subgraph_ColorBar.DataColor[i] = RGB(255, 0, 0);
         }
+#pragma endregion
 
+#pragma region BUY SELL PLOTS
         bool bShowUp = true;
         bool bShowDown = true;
 
@@ -965,21 +980,12 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             }
         }
 
+#pragma endregion
+
         if (!bIsCurrentBar)
             return;
 
-        // KAMA BOUNCE
-        if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
-            if (bBarClosed && high > kama && open < kama && close < kama) {
-                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
-            }
-            if (bBarClosed && low < kama && open > kama && close > kama) {
-                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
-            }
-        }
-
+#pragma region VOLUME IMBALANCE
         //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
         //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
 
