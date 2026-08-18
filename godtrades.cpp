@@ -977,6 +977,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
 #pragma endregion
 
+        // VolImb need to be BEFORE the current bar check, or they don't re-draw after an INS key update
         if (IsVolImbGreen(sc, sc.CurrentIndex))
             sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
 
