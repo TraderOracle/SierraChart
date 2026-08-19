@@ -13,13 +13,16 @@ SCString ReadTextFile(SCStudyInterfaceRef sc, SCString FileLocation) {
 }
 
 SCSFExport scsf_FancyNews(SCStudyInterfaceRef sc) {
+    std::vector<SCString> sLines;
     int i = sc.Index;
+    int prevBar = 0;
     SCInputRef Input_FileName = sc.Input[0];
     SCString txt = "";
     SCSubgraphRef Subgraph_Storage = sc.Subgraph[0];
+    SCFloatArrayRef StorageArray = Subgraph_Storage.Arrays[0];
     SCInputRef Input_DrawLabels = sc.Input[0];
     SCInputRef Input_URL = sc.Input[1];
-    SCFloatArrayRef StorageArray = Subgraph_Storage.Arrays[0];
+    SCInputRef News_URL = sc.Input[2];
 
     if (sc.SetDefaults) {
         sc.GraphName = "Fancy News";
@@ -29,10 +32,10 @@ SCSFExport scsf_FancyNews(SCStudyInterfaceRef sc) {
         Subgraph_Storage.DrawStyle = DRAWSTYLE_IGNORE;
 
         Input_DrawLabels.Name = "Version";
-        Input_DrawLabels.SetFloat(1);
+        Input_DrawLabels.SetFloat(1.1);
 
-        Input_DrawLabels.Name = "News URL";
-        Input_DrawLabels.SetString("https://tradingeconomics.com/calendar");
+        News_URL.Name = "News URL";
+        News_URL.SetString("https://tradingeconomics.com/calendar");
 
         return;
     }
@@ -54,184 +57,42 @@ SCSFExport scsf_FancyNews(SCStudyInterfaceRef sc) {
     auto phigh{sc.High[i - 1]};
     auto plow{sc.Low[i - 1]};
     bool bIsCurrentBar = false;
+    SCString TwoMinAhead;
+    SCString msg;
 
     if (i == sc.ArraySize - 2)
         bIsCurrentBar = true;
 
-    SCDateTime CurrentTime = sc.CurrentSystemDateTime;
-    SCDateTime TimePlusTwoMinutes = CurrentTime + SCDateTime::MINUTES(2);
-    SCString TimeString;
-    SCString sAMPM = "AM";
-    int iHr = TimePlusTwoMinutes.GetHour();
-    if (iHr >= 12) {
-        iHr -= 12;
-        sAMPM = "PM";
-    }
-    TimeString.Format("%d:%02d %s", iHr, TimePlusTwoMinutes.GetMinute(), sAMPM.GetChars());
-    if (TimeString != LastDate) {
-        LastDate = TimeString;
-        sc.AddMessageToLog(TimeString, 1);
-
-        SCString PathAndFileName = "C:\\temp\\today.txt";
-        SCString MyInputString("");
-        if (MyInputString == "")
-            MyInputString.Format(ReadTextFile(sc, PathAndFileName));
-        std::vector<SCString> sLines;
-        MyInputString.ParseLines(sLines);
-        int idx = 1;
-        for (const SCString &ss: sLines) {
-            //sc.AddMessageToLog(ss.GetChars(), 1);
-            if (strstr(ss, TimeString)) {
-                sc.AddMessageToLog("Timestring found", 1);
-                sc.AlertWithMessage(29, "TraderSmarts WICK");
-            }
+    if (bIsCurrentBar && bBarClosed) {
+        SCDateTime CurrentTime = sc.CurrentSystemDateTime;
+        SCDateTime TwoMin = CurrentTime + SCDateTime::MINUTES(2);
+        SCDateTime TenMin = CurrentTime + SCDateTime::MINUTES(10);
+        SCString sAMPM = "AM";
+        int iHr = TwoMin.GetHour();
+        if (iHr >= 12) {
+            iHr -= 12;
+            sAMPM = "PM";
         }
-    }
 
-    if (bIsCurrentBar) {
+        TwoMinAhead.Format("%d:%02d %s", iHr, TwoMin.GetMinute(), sAMPM.GetChars());
 
-    }
+        if (TwoMinAhead != LastDate) {
+            LastDate = TwoMinAhead;
 
-    // FULL REFRESH (INSERT key)
-    if (sc.UpdateStartIndex == 0) {
-        return;
+            SCString PathAndFileName = "C:\\temp\\today.txt";
+            SCString MyInputString = ReadTextFile(sc, PathAndFileName);
+            MyInputString.ParseLines(sLines);
+            sc.AddMessageToLog(txt.Format("Read file, lines %d", sLines.size()), 1);
 
-        SCString PathAndFileName = "C:\\temp\\today.txt";
-        SCString MyInputString("");
-        SCString w("");
-
-        float &fStart = sc.GetPersistentFloat(0);
-        float &fEnd = sc.GetPersistentFloat(1);
-        SCString &desc = sc.GetPersistentSCString(2);
-
-        if (MyInputString == "")
-            MyInputString.Format(ReadTextFile(sc, PathAndFileName));
-        std::vector<SCString> sLines;
-        MyInputString.ParseLines(sLines);
-        int idx = 1;
-        for (const SCString &ss: sLines) {
-            if (strstr(ss, TimeString)) {
-                sc.AddMessageToLog("Timestring found", 1);
-            }
-            /*
-                        if (strstr(ss, "MTS Numbers:"))
-                        {
-                            int iX = ss.IndexOf(':');
-                            SCString yy = ss.Right(ss.GetLength() - iX - 2);
-                            sc.AddMessageToLog(w.Format("MTS = |%s|", yy.GetChars()), 1);
-                            StorageArray[RecordCount] = fStart;
-                            RecordCount++;
-
-                            std::vector<char*> tokens;
-                            yy.Tokenize(", ", tokens);
-                            for (SCString s : tokens)
-                            {
-                                fStart = std::stof(s.GetChars());
-                                sc.AddMessageToLog(w.Format("Token = %f", fStart), 1);
-                                s_UseTool Tool;
-                                Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                                Tool.TextAlignment = DT_RIGHT;
-                                Tool.DrawingType = DRAWING_HORIZONTALLINE;
-                                Tool.BeginValue = fStart;
-                                Tool.EndValue = fStart;
-                                Tool.ChartNumber = sc.ChartNumber;
-                                Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                                Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                                Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                                Tool.ShowPrice = 0;
-                                Tool.Text.Format("MTS");
-                                Tool.FontSize = 9;
-                                Tool.LineWidth = 1;
-                                Tool.LineNumber = idx;
-                                Tool.Color = COLOR_GAINSBORO;
-                                Tool.FontBold = true;
-                                sc.UseTool(Tool);
-                                idx++;
-                            }
-                        }
-            */
-            //sc.AddMessageToLog(ss, 0);
-            if (strstr(ss, "Sand") || strstr(ss, "Long") || strstr(ss, "Short")) {
-                int id = ss.IndexOf('-');
-                if (id > 0) {
-                    int iS = ss.IndexOf(' ');
-                    if (iS > 0) {
-                        // 20294.25 - 20283.25 Range Short
-                        fStart = std::stof(ss.Left(iS).GetChars());
-                        int ix = ss.IndexOf(' ', iS + 3);
-                        SCString yy = ss.GetSubString(ix - iS - 3, iS + 3);
-                        desc = ss.GetSubString(ss.GetLength() - ix - 2, ix + 1);
-                        fEnd = std::stof(yy.GetChars());
-                        //sc.AddMessageToLog(w.Format("Split = %f, %f", fStart, fEnd), 1);
-                        //sc.AddMessageToLog(w.Format("Desc = %s, %f to %f", desc.GetChars(), fStart, fEnd), 1);
-
-                        StorageArray[RecordCount] = fStart;
-                        RecordCount++;
-                        StorageArray[RecordCount] = fEnd;
-                        RecordCount++;
-
-                        s_UseTool Tool;
-                        Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                        Tool.LineWidth = 1;
-                        Tool.TransparencyLevel = 70;
-                        Tool.TextAlignment = DT_RIGHT;
-                        Tool.DrawingType = DRAWING_RECTANGLE_EXT_HIGHLIGHT;
-                        Tool.BeginValue = fStart;
-                        Tool.EndValue = fEnd;
-                        Tool.ChartNumber = sc.ChartNumber;
-                        Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                        Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                        Tool.ShowPrice = 0;
-                        Tool.Text.Format("%s", desc.GetChars());
-                        Tool.FontSize = 9;
-                        Tool.LineNumber = idx;
-                        if (strstr(desc, "Sand"))
-                            Tool.Color = COLOR_GAINSBORO;
-                        else if (strstr(desc, "Short"))
-                            Tool.Color = COLOR_RED;
-                        else if (strstr(desc, "Long"))
-                            Tool.Color = COLOR_LIME;
-                        Tool.FontBold = true;
-                        Tool.SecondaryColor = Tool.Color;
-                        sc.UseTool(Tool);
-                    }
-                } else {
-                    int iS = ss.IndexOf(' ');
-                    if (iS > 0) {
-                        fStart = std::stof(ss.Left(iS).GetChars());
-                        desc = ss.GetSubString(ss.GetLength() - iS - 2, iS + 1);
-                        //sc.AddMessageToLog(w.Format("%s = %f", desc.GetChars(), fStart), 1);
-                        StorageArray[RecordCount] = fStart;
-                        RecordCount++;
-
-                        s_UseTool Tool;
-                        Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                        Tool.TextAlignment = DT_RIGHT;
-                        Tool.DrawingType = DRAWING_HORIZONTALLINE;
-                        Tool.BeginValue = fStart;
-                        Tool.EndValue = fStart;
-                        Tool.ChartNumber = sc.ChartNumber;
-                        Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                        Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                        Tool.ShowPrice = 0;
-                        Tool.Text.Format("%s", desc.GetChars());
-                        Tool.FontSize = 9;
-                        Tool.LineWidth = 1;
-                        Tool.LineNumber = idx;
-                        if (strstr(desc, "Sand"))
-                            Tool.Color = COLOR_GAINSBORO;
-                        else if (strstr(desc, "Short"))
-                            Tool.Color = COLOR_RED;
-                        else if (strstr(desc, "Long"))
-                            Tool.Color = COLOR_LIME;
-                        Tool.FontBold = true;
-                        sc.UseTool(Tool);
-                    }
+            for (const SCString &ss: sLines) {
+                //sc.AddMessageToLog(msg.Format("Compare : %s %s", TwoMinAhead.GetChars(), ss.GetChars()), 1);
+                if (strstr(ss.GetChars(), TwoMinAhead.GetChars())) {
+                    sc.AddMessageToLog(msg.Format("News : %s %s", TwoMinAhead.GetChars(), ss.GetChars()), 1);
+                    sc.AlertWithMessage(29, "2m NEWS ALERT");
                 }
             }
-            idx++;
         }
+
     }
+
 }
