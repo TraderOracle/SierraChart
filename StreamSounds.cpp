@@ -196,21 +196,29 @@ static std::vector<SCString> SplitSC(const SCString &Str, char Delimiter) {
 SCDLLName("Stream Sounds DLL")
 
 SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
-
 #pragma region LOCALS
     int i = sc.Index;
     int &Sound1Played = sc.GetPersistentInt(1);
     int &Sound2Played = sc.GetPersistentInt(2);
     int &Sound3Played = sc.GetPersistentInt(3);
     int &Sound4Played = sc.GetPersistentInt(4);
+    int &Sound5Played = sc.GetPersistentInt(5);
+    int &Sound6Played = sc.GetPersistentInt(6);
+    int &Sound7Played = sc.GetPersistentInt(7);
+    int &Sound8Played = sc.GetPersistentInt(8);
     SCString &prevTime = sc.GetPersistentSCString(5);
     SCString txt = "";
     SCString sLine = "";
+    SCString w = "";
 
     sc.SetPersistentInt(1, 0);
     sc.SetPersistentInt(2, 0);
     sc.SetPersistentInt(3, 0);
     sc.SetPersistentInt(4, 0);
+    sc.SetPersistentInt(5, 0);
+    sc.SetPersistentInt(6, 0);
+    sc.SetPersistentInt(7, 0);
+    sc.SetPersistentInt(8, 0);
 
     SCInputRef Input_Version = sc.Input[99];
     SCInputRef Input_Time1 = sc.Input[0];
@@ -222,15 +230,23 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
     SCInputRef Input_Time4 = sc.Input[6];
     SCInputRef Input_Sound4 = sc.Input[7];
 
-    SCInputRef Input_Trigger1 = sc.Input[7];
-    SCInputRef Input_TrigSound1 = sc.Input[7];
+    SCInputRef Input_Time5 = sc.Input[8];
+    SCInputRef Input_Sound5 = sc.Input[9];
+    SCInputRef Input_Time6 = sc.Input[10];
+    SCInputRef Input_Sound6 = sc.Input[11];
+    SCInputRef Input_Time7 = sc.Input[12];
+    SCInputRef Input_Sound7 = sc.Input[13];
+    SCInputRef Input_Time8 = sc.Input[14];
+    SCInputRef Input_Sound8 = sc.Input[15];
 
-    SCInputRef Input_Trigger2 = sc.Input[7];
-    SCInputRef Input_TrigSound2 = sc.Input[7];
+    SCInputRef Input_Trigger1 = sc.Input[16];
+    SCInputRef Input_TrigSound1 = sc.Input[17];
+    SCInputRef Input_Trigger2 = sc.Input[18];
+    SCInputRef Input_TrigSound2 = sc.Input[19];
+    SCInputRef Input_Trigger3 = sc.Input[20];
+    SCInputRef Input_TrigSound3 = sc.Input[21];
 
-    SCInputRef Input_Trigger3 = sc.Input[7];
-    SCInputRef Input_TrigSound3 = sc.Input[7];
-
+    SCSubgraphRef Subgraph_Text = sc.Subgraph[0];
 
     const int NO = 0;
     const int YES = 1;
@@ -240,44 +256,71 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
         sc.GraphName = "Stream Sounds";
         sc.GraphRegion = 0;
         sc.AutoLoop = 1;
+        sc.UpdateAlways = 1;
 
         Input_Version.Name = "Version";
-        Input_Version.SetFloat(2.4);
+        Input_Version.SetFloat(2.7);
 
-        Input_Time1.Name = "Time 1";
-        Input_Time1.SetString("05:30");
+        Input_Time1.Name = "New York Open";
+        Input_Time1.SetString("08:30");
         Input_Sound1.Name = "Sound 1";
-        Input_Sound1.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+        Input_Sound1.SetString("c:\\SierraChart\\AlertSounds\\NYopen.wav");
 
-        Input_Time2.Name = "Time 2";
-        Input_Time2.SetString("05:30");
+        Input_Time2.Name = "Market Pivot";
+        Input_Time2.SetString("09:00");
         Input_Sound2.Name = "Sound 2";
-        Input_Sound2.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+        Input_Sound2.SetString("c:\\SierraChart\\AlertSounds\\MarketPivot.wav");
 
-        Input_Time3.Name = "Time 3";
-        Input_Time3.SetString("05:30");
+        Input_Time3.Name = "Inverse NY moves";
+        Input_Time3.SetString("10:30");
         Input_Sound3.Name = "Sound 3";
-        Input_Sound3.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+        Input_Sound3.SetString("c:\\SierraChart\\AlertSounds\\InverseNY.wav");
 
-        Input_Time4.Name = "Time 4";
-        Input_Time4.SetString("05:30");
+        Input_Time4.Name = "Euro Move";
+        Input_Time4.SetString("10:00");
         Input_Sound4.Name = "Sound 4";
-        Input_Sound4.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+        Input_Sound4.SetString("c:\\SierraChart\\AlertSounds\\EuroMove.wav");
 
-        Input_Trigger1.Name = "";
+        Input_Time5.Name = "Bond Auctions";
+        Input_Time5.SetString("12:00");
+        Input_Sound5.Name = "Sound 5";
+        Input_Sound5.SetString("c:\\SierraChart\\AlertSounds\\BondAuctions.wav");
+
+        Input_Time6.Name = "Capital Injection";
+        Input_Time6.SetString("13:30");
+        Input_Sound6.Name = "Sound 6";
+        Input_Sound6.SetString("c:\\SierraChart\\AlertSounds\\CapInject.wav");
+
+        Input_Time7.Name = "Rug Pull";
+        Input_Time7.SetString("14:45");
+        Input_Sound7.Name = "Sound 7";
+        Input_Sound7.SetString("c:\\SierraChart\\AlertSounds\\RugPull.wav");
+
+        Input_Time8.Name = "Time 8";
+        Input_Time8.SetString("05:30");
+        Input_Sound8.Name = "Sound 8";
+        Input_Sound8.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+
+        Input_Trigger1.Name = "News in 2 minutes";
         Input_Trigger1.SetString("c:\\SierraChart\\AlertSounds\\trigger1.txt");
-        Input_TrigSound1.Name = "";
+        Input_TrigSound1.Name = "News sound";
         Input_TrigSound1.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
 
-        Input_Trigger2.Name = "";
+        Input_Trigger2.Name = "Trigger File 2";
         Input_Trigger2.SetString("c:\\SierraChart\\AlertSounds\\trigger2.txt");
-        Input_TrigSound2.Name = "";
+        Input_TrigSound2.Name = "Sound";
         Input_TrigSound2.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
 
-        Input_Trigger3.Name = "";
+        Input_Trigger3.Name = "Trigger File 3";
         Input_Trigger3.SetString("c:\\SierraChart\\AlertSounds\\trigger3.txt");
-        Input_TrigSound3.Name = "";
+        Input_TrigSound3.Name = "Sound";
         Input_TrigSound3.SetString("c:\\SierraChart\\AlertSounds\\ES.wav");
+
+        Subgraph_Text.Name = "Text";
+        Subgraph_Text.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
+        Subgraph_Text.PrimaryColor = RGB(151, 190, 252);
+        Subgraph_Text.LineWidth = 12; // font size in points
+        Subgraph_Text.DisplayNameValueInWindowsFlags = 0;
 
         return;
     }
@@ -295,6 +338,8 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.PlaySound(sound);
             sc.SetPersistentInt(1, YES);
             sc.AddMessageToLog(sLine.Format("Time 1 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+             , true, w.Format("%s",Input_Time1.GetString()), true, true);
         }
 
         text = Input_Time2.GetString();
@@ -304,6 +349,8 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.PlaySound(sound);
             sc.SetPersistentInt(2, YES);
             sc.AddMessageToLog(sLine.Format("Time 2 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time2.GetString()), true, true);
         }
 
         text = Input_Time3.GetString();
@@ -313,6 +360,8 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.PlaySound(sound);
             sc.SetPersistentInt(3, YES);
             sc.AddMessageToLog(sLine.Format("Time 3 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time3.GetString()), true, true);
         }
 
         text = Input_Time4.GetString();
@@ -321,11 +370,49 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.PlaySound(sound);
             sc.SetPersistentInt(4, YES);
             sc.AddMessageToLog(sLine.Format("Time 4 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time4.GetString()), true, true);
+        }
+
+        text = Input_Time5.GetString();
+        if (text == txt && sc.GetPersistentInt(5) == 0) {
+            SCString sound = Input_Sound5.GetString();
+            sc.PlaySound(sound);
+            sc.SetPersistentInt(5, YES);
+            sc.AddMessageToLog(sLine.Format("Time 5 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time5.GetString()), true, true);
+        }
+        text = Input_Time6.GetString();
+        if (text == txt && sc.GetPersistentInt(6) == 0) {
+            SCString sound = Input_Sound6.GetString();
+            sc.PlaySound(sound);
+            sc.SetPersistentInt(6, YES);
+            sc.AddMessageToLog(sLine.Format("Time 6 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time6.GetString()), true, true);
+        }
+        text = Input_Time7.GetString();
+        if (text == txt && sc.GetPersistentInt(7) == 0) {
+            SCString sound = Input_Sound7.GetString();
+            sc.PlaySound(sound);
+            sc.SetPersistentInt(7, YES);
+            sc.AddMessageToLog(sLine.Format("Time 7 matched %s", txt.GetChars()), 1);
+            sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+ , true, w.Format("%s",Input_Time7.GetString()), true, true);
+        }
+        text = Input_Time8.GetString();
+        if (text == txt && sc.GetPersistentInt(8) == 0) {
+            SCString sound = Input_Sound8.GetString();
+            sc.PlaySound(sound);
+            sc.SetPersistentInt(8, YES);
+            sc.AddMessageToLog(sLine.Format("Time 8 matched %s", txt.GetChars()), 1);
         }
 
         int trigHandle1 = 0;
         SCString trig1 = Input_Trigger1.GetString();
-        int OpenResult1 = sc.OpenFile(trig1.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, trigHandle1);
+        int OpenResult1 = sc.OpenFile(trig1.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
+                                      trigHandle1);
         if (OpenResult1 != 0) {
             SCString trig1File = Input_TrigSound1.GetString();
             sc.PlaySound(trig1File);
@@ -336,7 +423,8 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
 
         int trigHandle2 = 0;
         SCString trig2 = Input_Trigger1.GetString();
-        int OpenResult2 = sc.OpenFile(trig2.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, trigHandle2);
+        int OpenResult2 = sc.OpenFile(trig2.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
+                                      trigHandle2);
         if (OpenResult2 != 0) {
             SCString trig2File = Input_TrigSound2.GetString();
             sc.PlaySound(trig2File);
@@ -347,7 +435,8 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
 
         int trigHandle3 = 0;
         SCString trig3 = Input_Trigger1.GetString();
-        int OpenResult3 = sc.OpenFile(trig3.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, trigHandle3);
+        int OpenResult3 = sc.OpenFile(trig3.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
+                                      trigHandle3);
         if (OpenResult3 != 0) {
             SCString trig3File = Input_TrigSound3.GetString();
             sc.PlaySound(trig3File);
@@ -355,10 +444,10 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.CloseFile(trigHandle3);
             int result3 = remove(trig3.GetChars());
         }
-
     }
 
     if (sc.IsFullRecalculation) {
+        sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
+         , true, w.Format("Like/Subscribe"), true, true);
     }
-
 }
