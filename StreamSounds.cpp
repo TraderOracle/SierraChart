@@ -196,6 +196,7 @@ static std::vector<SCString> SplitSC(const SCString &Str, char Delimiter) {
 SCDLLName("Stream Sounds DLL")
 
 SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
+
 #pragma region LOCALS
     int i = sc.Index;
     int &Sound1Played = sc.GetPersistentInt(1);
@@ -252,6 +253,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
     const int YES = 1;
 #pragma endregion
 
+#pragma region DEFAULTS
     if (sc.SetDefaults) {
         sc.GraphName = "Stream Sounds";
         sc.GraphRegion = 0;
@@ -324,6 +326,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
 
         return;
     }
+#pragma endregion
 
     SCDateTime CurrentTime = sc.CurrentSystemDateTime;
     txt.Format("%02d:%02d", CurrentTime.GetHour(), CurrentTime.GetMinute());
@@ -331,13 +334,16 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
     if (prevTime != txt) {
         prevTime = txt;
 
+        //=-=-=-=-=-=-=-=-=-=-=  NEW MINUTE starts here  =-=-=-=-=-=-=-=-=-=-=
+
+#pragma region TIME SOUNDS
         SCString text = Input_Time1.GetString();
         int played = sc.GetPersistentInt(1);
         if (text == txt && sc.GetPersistentInt(1) == 0) {
             SCString sound = Input_Sound1.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(1, YES);
-            sc.AddMessageToLog(sLine.Format("Time 1 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time1 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
              , true, w.Format("%s",Input_Time1.GetString()), true, true);
         }
@@ -348,7 +354,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound2.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(2, YES);
-            sc.AddMessageToLog(sLine.Format("Time 2 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time2 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time2.GetString()), true, true);
         }
@@ -359,7 +365,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound3.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(3, YES);
-            sc.AddMessageToLog(sLine.Format("Time 3 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time3 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time3.GetString()), true, true);
         }
@@ -369,7 +375,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound4.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(4, YES);
-            sc.AddMessageToLog(sLine.Format("Time 4 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time4 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time4.GetString()), true, true);
         }
@@ -379,7 +385,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound5.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(5, YES);
-            sc.AddMessageToLog(sLine.Format("Time 5 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time5 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time5.GetString()), true, true);
         }
@@ -388,7 +394,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound6.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(6, YES);
-            sc.AddMessageToLog(sLine.Format("Time 6 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time6 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time6.GetString()), true, true);
         }
@@ -397,7 +403,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound7.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(7, YES);
-            sc.AddMessageToLog(sLine.Format("Time 7 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time7 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
             sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
  , true, w.Format("%s",Input_Time7.GetString()), true, true);
         }
@@ -406,9 +412,11 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             SCString sound = Input_Sound8.GetString();
             sc.PlaySound(sound);
             sc.SetPersistentInt(8, YES);
-            sc.AddMessageToLog(sLine.Format("Time 8 matched %s", txt.GetChars()), 1);
+            sc.AddMessageToLog(sLine.Format("Time8 matched %s at %s", text.GetChars(), txt.GetChars()), 1);
         }
+#pragma endregion
 
+#pragma region TRIGGER SOUNDS
         int trigHandle1 = 0;
         SCString trig1 = Input_Trigger1.GetString();
         int OpenResult1 = sc.OpenFile(trig1.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
@@ -444,10 +452,12 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
             sc.CloseFile(trigHandle3);
             int result3 = remove(trig3.GetChars());
         }
+#pragma endregion
+
     }
 
     if (sc.IsFullRecalculation) {
         sc.AddAndManageSingleTextDrawingForStudy(sc, false, 10, 10,Subgraph_Text
-         , true, w.Format("Like/Subscribe"), true, true);
+         , true, w.Format("Like / Subscribe"), true, true);
     }
 }
