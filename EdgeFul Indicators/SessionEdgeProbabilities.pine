@@ -1,0 +1,406 @@
+//@version=6
+// ═══════════════════════════════════════════════════════════════════════════
+//  SESSION EDGE PROBABILITIES  —  7-rule statistical edge dashboard
+//  Futures-session framing (trading day opens 18:00 ET).
+//  Works identically on ANY chart timeframe: all logic is evaluated on a
+//  fixed calculation timeframe (default 5m) via request.security, so a 5m,
+//  1h, 4h or daily TSLA/NQ chart all report the same state.
+//
+//  For every rule it shows:
+//     STATIC %  = the probability you supplied (editable in settings)
+//     LIVE %    = the hit rate measured on THIS symbol's own history
+//                 (n = number of qualifying trading days observed)
+// ═══════════════════════════════════════════════════════════════════════════
+indicator("Session Edge Probabilities", "SEP", overlay = true, max_labels_count = 500, max_lines_count = 500)
+
+// ─────────────────────────── INPUTS ────────────────────────────────────────
+gCalc = "Calculation"
+inCalcTf   = input.timeframe("5", "Calculation timeframe", tooltip = "All session logic runs on this TF. 5m is a good balance. On charts finer than this, the chart TF is used instead.", group = gCalc)
+inAutoTf   = input.bool(true, "Auto-drop to chart TF when chart is finer", group = gCalc)
+
+gS = "Session times — minutes from NY midnight (9:30am = 570)"
+inDayStart = input.int(1080, "Trading day start  (1080 = 18:00 ET)", group = gS)
+inNyOpen   = input.int(570,  "NY open            (570  = 09:30 ET)", group = gS)
+inRthClose = input.int(960,  "RTH close          (960  = 16:00 ET)", group = gS)
+inSessEnd  = input.int(1020, "Session end        (1020 = 17:00 ET)", group = gS)
+inOrbStart = input.int(570,  "ORB start          (570  = 09:30 ET)", group = gS)
+inOrbLen   = input.int(60,   "ORB length in minutes", group = gS)
+inR4Dead   = input.int(690,  "Rule 4 breakout deadline (690 = 11:30 ET)", tooltip = "Your note said 'before 10:30' but a 9:30-10:30 ORB cannot break before it is finished. Set ORB length to 30 and this to 630 if your ORB is really 9:30-10:00.", group = gS)
+
+gP = "Static probabilities (%)"
+inP1 = input.float(95, "1  Monday → Sunday open retrace", group = gP)
+inP2 = input.float(72, "2  Return to midnight level",     group = gP)
+inP3 = input.float(70, "3  ORB low-first → break ORB high (and inverse)", group = gP)
+inP4 = input.float(97, "4  Tuesday ORB breakout by deadline", group = gP)
+inP5 = input.float(77, "5  Green first NY hour → green day", group = gP)
+inP6 = input.float(82, "6  Open below prior close → return to it", group = gP)
+inP7 = input.float(88, "7  Inside day → break yesterday's body", group = gP)
+
+gR = "Rule options"
+inRefSym   = input.symbol("CME_MINI:NQ1!", "Rule 5 reference symbol", tooltip = "Rule 5 is defined on NQ's first NY hour. Set to the chart symbol to make it self-referential.", group = gR)
+inUseSelf5 = input.bool(false, "Rule 5: use chart symbol instead of reference", group = gR)
+
+gD = "Display"
+inShowTable  = input.bool(true, "Show dashboard table", group = gD)
+inTablePos   = input.string("Top Right", "Table position", options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group = gD)
+inTableSize  = input.string("Small", "Table text size", options = ["Tiny", "Small", "Normal", "Large"], group = gD)
+inActiveOnly = input.bool(false, "Only list rules that are live right now", group = gD)
+inShowLabel  = input.bool(true, "Show price label with live rules", group = gD)
+inShowLevels = input.bool(true, "Plot target levels", group = gD)
+inMinN       = input.int(20, "Minimum sample size before trusting LIVE %", minval = 1, group = gD)
+
+// ───────────────────────── CORE ENGINE ─────────────────────────────────────
+f_state(bool a, bool h) => a ? (h ? 2.0 : 1.0) : 0.0
+f_rate(float k, float n) => n > 0 ? k / n * 100.0 : float(na)
+
+// Lightweight helper for the rule-5 reference symbol: was the first NY hour
+// green today, and was it green on the day that just finished?
+f_ref(int nyStart, int sessEnd, int orbStart, int orbLen) =>
+    string tz = "America/New_York"
+    int mo = hour(time, tz) * 60 + minute(time, tz)
+    bool newTd = na(time_tradingday[1]) or time_tradingday != time_tradingday[1]
+    var float nyOpen  = na
+    var float fhGreen = na
+    var float pFh     = na
+    var bool  done    = false
+    if newTd
+        pFh     := fhGreen
+        nyOpen  := na
+        fhGreen := na
+        done    := false
+    if na(nyOpen) and mo >= nyStart and mo < sessEnd
+        nyOpen := open
+    if not done and not na(nyOpen) and mo >= orbStart + orbLen and mo < sessEnd
+        done    := true
+        fhGreen := close > nyOpen ? 1.0 : 0.0
+    [fhGreen, pFh]
+
+// Returns a flat tuple. Encoding for each rule state:
+//   0 = not applicable today   1 = armed / pending   2 = target already hit
+f_core(int dayStart, int nyStart, int rthEnd, int sessEnd, int orbStart, int orbLen, int r4Dead) =>
+    string tz = "America/New_York"
+    int mo = hour(time, tz) * 60 + minute(time, tz)
+    int dw = dayofweek(time, tz)
+    bool newTd = na(time_tradingday[1]) or time_tradingday != time_tradingday[1]
+
+    // ── per-trading-day state
+    var int   tdDow       = na
+    var float tdOpen      = na          // Sunday 18:00 open when tdDow = Monday
+    var float midPx       = na          // 00:00 ET price
+    var float nyOpen      = na          // 09:30 ET price
+    var float prevClose   = na          // prior trading day's final close (17:00 ET)
+    var float orbH        = na
+    var float orbL        = na
+    var int   orbHT       = na
+    var int   orbLT       = na
+    var bool  orbDone     = false
+    var bool  orbLowFirst = false
+    var float fhGreen     = na          // 1 = first NY hour closed green
+    var float lastClose   = na
+    var float rthClosePx  = na
+
+    // ── prior trading days (built from session bars, not the daily feed)
+    var float curO = na
+    var float curH = na
+    var float curL = na
+    var float y1o  = na
+    var float y1h  = na
+    var float y1l  = na
+    var float y1c  = na
+    var float y2h  = na
+    var float y2l  = na
+
+    // ── rule arm / hit flags and targets
+    var bool a1 = false
+    var bool h1 = false
+    var bool a2 = false
+    var bool h2 = false
+    var bool a3 = false
+    var bool h3 = false
+    var bool a4 = false
+    var bool h4 = false
+    var bool a6 = false
+    var bool h6 = false
+    var bool a7 = false
+    var bool h7 = false
+    var float t1  = na
+    var float t2  = na
+    var float t3  = na
+    var float t6  = na
+    var float t7u = na
+    var float t7d = na
+
+    // ── historical counters (attempts / hits)
+    var float n1 = 0.0
+    var float k1 = 0.0
+    var float n2 = 0.0
+    var float k2 = 0.0
+    var float n3 = 0.0
+    var float k3 = 0.0
+    var float n4 = 0.0
+    var float k4 = 0.0
+    var float n6 = 0.0
+    var float k6 = 0.0
+    var float n7 = 0.0
+    var float k7 = 0.0
+
+    // ── finalised values of the day that just closed (used for rule 5 stats)
+    var float pFh    = na
+    var float pGreen = na
+
+    // ═════ trading-day rollover ═════
+    if newTd
+        // 1. score the day that just finished
+        if not na(nyOpen)
+            if a1
+                n1 += 1
+                k1 += h1 ? 1 : 0
+            if a2
+                n2 += 1
+                k2 += h2 ? 1 : 0
+            if a3
+                n3 += 1
+                k3 += h3 ? 1 : 0
+            if a4
+                n4 += 1
+                k4 += h4 ? 1 : 0
+            if a6
+                n6 += 1
+                k6 += h6 ? 1 : 0
+            if a7
+                n7 += 1
+                k7 += h7 ? 1 : 0
+            pFh := fhGreen
+            float refClose = na(rthClosePx) ? lastClose : rthClosePx
+            pGreen := na(refClose) ? na : (refClose > nyOpen ? 1.0 : 0.0)
+
+        // 2. roll the daily OHLC window
+        y2h := y1h
+        y2l := y1l
+        y1o := curO
+        y1h := curH
+        y1l := curL
+        y1c := close[1]
+
+        // 3. reset for the new trading day
+        prevClose  := close[1]
+        tdOpen     := open
+        tdDow      := mo >= dayStart ? (dw == 7 ? 1 : dw + 1) : dw
+        midPx      := na
+        nyOpen     := na
+        rthClosePx := na
+        orbH       := na
+        orbL       := na
+        orbHT      := na
+        orbLT      := na
+        orbDone    := false
+        orbLowFirst := false
+        fhGreen    := na
+        a1 := false
+        h1 := false
+        a2 := false
+        h2 := false
+        a3 := false
+        h3 := false
+        a4 := false
+        h4 := false
+        a6 := false
+        h6 := false
+        t1 := na
+        t2 := na
+        t3 := na
+        t6 := na
+        curO := open
+        curH := high
+        curL := low
+
+        // 4. rule 7 arms immediately — an inside day can break out overnight
+        a7  := not na(y1h) and not na(y2h) and y1h < y2h and y1l > y2l
+        h7  := false
+        t7u := na(y1o) or na(y1c) ? na : math.max(y1o, y1c)
+        t7d := na(y1o) or na(y1c) ? na : math.min(y1o, y1c)
+    else
+        curH := math.max(curH, high)
+        curL := math.min(curL, low)
+
+    // ═════ intraday captures ═════
+    // midnight level (first bar of hour 0 inside this trading day)
+    if na(midPx) and hour(time, tz) == 0
+        midPx := open
+
+    // NY open + arm the open-driven rules
+    if na(nyOpen) and mo >= nyStart and mo < sessEnd
+        nyOpen := open
+        a1 := tdDow == dayofweek.monday and not na(tdOpen)
+        t1 := tdOpen
+        a2 := not na(midPx)
+        t2 := midPx
+        a6 := not na(prevClose) and nyOpen < prevClose
+        t6 := prevClose
+
+    // opening range
+    bool inOrb = mo >= orbStart and mo < orbStart + orbLen
+    if inOrb
+        if na(orbH) or high > orbH
+            orbH  := high
+            orbHT := mo
+        if na(orbL) or low < orbL
+            orbL  := low
+            orbLT := mo
+    if not orbDone and not na(orbH) and mo >= orbStart + orbLen and mo < sessEnd
+        orbDone     := true
+        orbLowFirst := orbLT <= orbHT
+        fhGreen     := na(nyOpen) ? na : (close > nyOpen ? 1.0 : 0.0)
+        a3 := true
+        t3 := orbLowFirst ? orbH : orbL
+        a4 := tdDow == dayofweek.tuesday
+        h4 := false
+
+    // RTH close snapshot (16:00-17:00 window only, never the 18:00 restart)
+    if mo >= rthEnd and mo < sessEnd and na(rthClosePx)
+        rthClosePx := close
+
+    // ═════ hit detection ═════
+    bool dayWin = mo >= nyStart and mo < sessEnd
+    if a1 and not h1 and not na(t1) and dayWin
+        h1 := low <= t1 and high >= t1
+    if a2 and not h2 and not na(t2) and dayWin
+        h2 := low <= t2 and high >= t2
+    if a6 and not h6 and not na(t6) and dayWin
+        h6 := low <= t6 and high >= t6
+    if a3 and not h3
+        h3 := orbLowFirst ? high > orbH : low < orbL
+    if a4 and not h4 and mo <= r4Dead
+        h4 := high > orbH or low < orbL
+    if a7 and not h7 and not na(t7u)
+        h7 := high > t7u or low < t7d
+
+    // ═════ pack results ═════
+    lastClose := close
+    float noLvl = na
+
+    float st1 = f_state(a1, h1)
+    float st2 = f_state(a2, h2)
+    float st3 = f_state(a3, h3)
+    float st4 = f_state(a4, h4)
+    float st6 = f_state(a6, h6)
+    float st7 = f_state(a7, h7)
+    float dayGreenNow = na(nyOpen) ? na : (close > nyOpen ? 1.0 : 0.0)
+
+    [st1, t1, f_rate(k1, n1), n1, st2, t2, f_rate(k2, n2), n2, st3, t3, f_rate(k3, n3), n3, st4, noLvl, f_rate(k4, n4), n4, st6, t6, f_rate(k6, n6), n6, st7, t7u, f_rate(k7, n7), n7, t7d, fhGreen, pFh, pGreen, dayGreenNow, float(tdDow), orbH, orbL, midPx, tdOpen, prevClose, orbLowFirst ? 1.0 : 0.0, orbDone ? 1.0 : 0.0, float(time_tradingday)]
+
+// ─────────────────────── EVALUATE ON CALC TF ───────────────────────────────
+string calcTf = inAutoTf and timeframe.in_seconds() < timeframe.in_seconds(inCalcTf) ? timeframe.period : inCalcTf
+
+[st1, t1, r1, n1, st2, t2, r2, n2, st3, t3, r3, n3, st4, t4, r4, n4, st6, t6, r6, n6, st7, t7u, r7, n7, t7d, fhG, pFh, pGrn, grnNow, tdDowF, orbH, orbL, midPx, sunOpen, prevCls, lowFirst, orbDoneF, tdStamp] = request.security(syminfo.tickerid, calcTf, f_core(inDayStart, inNyOpen, inRthClose, inSessEnd, inOrbStart, inOrbLen, inR4Dead))
+
+// Rule 5's trigger comes from the reference symbol (NQ by default)
+string ref5 = inUseSelf5 ? syminfo.tickerid : inRefSym
+[refFh, refPFh] = request.security(ref5, calcTf, f_ref(inNyOpen, inSessEnd, inOrbStart, inOrbLen))
+
+// Rule 5 live stats: reference first hour green → THIS symbol closed green
+var float n5 = 0.0
+var float k5 = 0.0
+bool newTdTop = not na(tdStamp) and not na(tdStamp[1]) and tdStamp != tdStamp[1]
+if newTdTop and not na(refPFh)
+    if refPFh == 1
+        n5 += 1
+        k5 += (not na(pGrn) and pGrn == 1) ? 1 : 0
+float st5 = na(refFh) ? 0.0 : (refFh == 1 ? (not na(grnNow) and grnNow == 1 ? 2.0 : 1.0) : 0.0)
+float r5  = n5 > 0 ? k5 / n5 * 100.0 : na
+
+// ───────────────────────────── LEVELS ──────────────────────────────────────
+plot(inShowLevels and st1 > 0 ? t1     : na, "Sunday open",   color.new(color.orange, 0),  2, plot.style_linebr)
+plot(inShowLevels and st2 > 0 ? t2     : na, "Midnight",      color.new(color.aqua, 0),    1, plot.style_linebr)
+plot(inShowLevels and st6 > 0 ? t6     : na, "Prior close",   color.new(color.fuchsia, 0), 1, plot.style_linebr)
+plot(inShowLevels and orbDoneF == 1 ? orbH : na, "ORB high",  color.new(color.lime, 0),    1, plot.style_linebr)
+plot(inShowLevels and orbDoneF == 1 ? orbL : na, "ORB low",   color.new(color.red, 0),     1, plot.style_linebr)
+plot(inShowLevels and st7 > 0 ? t7u : na, "Inside-day up",    color.new(color.yellow, 40), 1, plot.style_linebr)
+plot(inShowLevels and st7 > 0 ? t7d : na, "Inside-day down",  color.new(color.yellow, 40), 1, plot.style_linebr)
+
+// ─────────────────────────── DASHBOARD ─────────────────────────────────────
+f_stateTxt(float s) => s == 2 ? "HIT" : s == 1 ? "LIVE" : "—"
+f_stateCol(float s) => s == 2 ? color.new(color.gray, 0) : s == 1 ? color.new(color.lime, 0) : color.new(color.gray, 60)
+f_px(float v) => na(v) ? "—" : str.tostring(math.round_to_mintick(v))
+f_pct(float v) => na(v) ? "—" : str.tostring(v, "#.#") + "%"
+
+var table tb = table.new(
+   inTablePos == "Top Right" ? position.top_right : inTablePos == "Top Left" ? position.top_left : inTablePos == "Bottom Right" ? position.bottom_right : inTablePos == "Bottom Left" ? position.bottom_left : position.middle_right,
+   6, 9, border_width = 1, border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 50))
+
+string tsz = inTableSize == "Tiny" ? size.tiny : inTableSize == "Small" ? size.small : inTableSize == "Normal" ? size.normal : size.large
+
+f_row(int r, string nm, float st, float lvl, float sp, float lr, float ns, string note) =>
+    color bg = st == 1 ? color.new(color.green, 82) : st == 2 ? color.new(color.gray, 88) : color.new(color.black, 92)
+    color fg = st > 0 ? color.new(color.white, 0) : color.new(color.gray, 35)
+    table.cell(tb, 0, r, nm,            text_color = fg, text_halign = text.align_left, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 1, r, f_stateTxt(st), text_color = f_stateCol(st), bgcolor = bg, text_size = tsz)
+    table.cell(tb, 2, r, f_px(lvl),      text_color = fg, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 3, r, f_pct(sp),      text_color = st > 0 ? color.new(color.yellow, 0) : fg, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 4, r, na(lr) ? "—" : f_pct(lr) + " (" + str.tostring(ns, "#") + ")", text_color = na(ns) or ns < inMinN ? color.new(color.gray, 30) : (na(lr) ? fg : (lr >= sp ? color.new(color.lime, 0) : color.new(color.orange, 0))), bgcolor = bg, text_size = tsz)
+    table.cell(tb, 5, r, note,           text_color = color.new(color.gray, 25), text_halign = text.align_left, bgcolor = bg, text_size = tsz)
+
+if inShowTable and barstate.islast
+    table.clear(tb, 0, 0, 5, 8)
+    table.cell(tb, 0, 0, "RULE",   text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+    table.cell(tb, 1, 0, "STATE",  text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+    table.cell(tb, 2, 0, "TARGET", text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+    table.cell(tb, 3, 0, "STATIC", text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+    table.cell(tb, 4, 0, "LIVE (n)", text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+    table.cell(tb, 5, 0, "CONTEXT", text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
+
+    int r = 1
+    if not inActiveOnly or st1 > 0
+        f_row(r, "1 Mon → Sun open", st1, t1, inP1, r1, n1, tdDowF == dayofweek.monday ? "Monday session" : "not Monday")
+        r += 1
+    if not inActiveOnly or st2 > 0
+        f_row(r, "2 Midnight level", st2, t2, inP2, r2, n2, "00:00 ET = " + f_px(midPx))
+        r += 1
+    if not inActiveOnly or st3 > 0
+        f_row(r, "3 ORB 1st-extreme", st3, t3, inP3, r3, n3, orbDoneF != 1 ? "ORB forming" : (lowFirst == 1 ? "low first → up" : "high first → down"))
+        r += 1
+    if not inActiveOnly or st4 > 0
+        f_row(r, "4 Tue ORB break", st4, float(na), inP4, r4, n4, tdDowF == dayofweek.tuesday ? "by " + str.tostring(int(inR4Dead / 60)) + ":" + (inR4Dead % 60 < 10 ? "0" : "") + str.tostring(inR4Dead % 60) : "not Tuesday")
+        r += 1
+    if not inActiveOnly or st5 > 0
+        f_row(r, "5 1st hr green→day", st5, float(na), inP5, r5, n5, na(refFh) ? "hour 1 pending" : (refFh == 1 ? "ref hr GREEN" : "ref hr red"))
+        r += 1
+    if not inActiveOnly or st6 > 0
+        f_row(r, "6 Open<prior close", st6, t6, inP6, r6, n6, "prior close " + f_px(prevCls))
+        r += 1
+    if not inActiveOnly or st7 > 0
+        f_row(r, "7 Inside-day break", st7, t7u, inP7, r7, n7, st7 > 0 ? "body " + f_px(t7d) + " / " + f_px(t7u) : "not inside")
+        r += 1
+    if r == 1
+        table.cell(tb, 0, 1, "No rules live right now", text_color = color.new(color.gray, 20), text_size = tsz)
+
+// ────────────────────────── PRICE LABEL ────────────────────────────────────
+f_lbl(string nm, float st, float sp, float lr, float ns) =>
+    st == 1 ? "\n" + nm + "  " + str.tostring(sp, "#") + "%" + (na(lr) or ns < inMinN ? "" : "  [live " + str.tostring(lr, "#") + "%]") : ""
+
+var label lb = na
+if inShowLabel and barstate.islast
+    string txt = "SESSION EDGE"
+    txt += f_lbl("① Sun open " + f_px(t1), st1, inP1, r1, n1)
+    txt += f_lbl("② Midnight " + f_px(t2), st2, inP2, r2, n2)
+    txt += f_lbl("③ ORB " + (lowFirst == 1 ? "→ high " + f_px(orbH) : "→ low " + f_px(orbL)), st3, inP3, r3, n3)
+    txt += f_lbl("④ Tue ORB break", st4, inP4, r4, n4)
+    txt += f_lbl("⑤ Green day", st5, inP5, r5, n5)
+    txt += f_lbl("⑥ Prior close " + f_px(t6), st6, inP6, r6, n6)
+    txt += f_lbl("⑦ Inside break", st7, inP7, r7, n7)
+    if txt == "SESSION EDGE"
+        txt += "\nno rules live"
+    label.delete(lb)
+    lb := label.new(bar_index, close, txt, style = label.style_label_left, color = color.new(color.black, 15), textcolor = color.white, size = size.small, textalign = text.align_left)
+
+// ─────────────────────────── ALERTS ────────────────────────────────────────
+alertcondition(st1 == 1 and st1[1] != 1, "R1 armed: Monday → Sunday open")
+alertcondition(st2 == 1 and st2[1] != 1, "R2 armed: midnight level open")
+alertcondition(st3 == 1 and st3[1] != 1, "R3 armed: ORB first-extreme set")
+alertcondition(st4 == 1 and st4[1] != 1, "R4 armed: Tuesday ORB breakout window")
+alertcondition(st6 == 1 and st6[1] != 1, "R6 armed: opened below prior close")
+alertcondition(st7 == 1 and st7[1] != 1, "R7 armed: inside day")
+alertcondition(st1 == 2 and st1[1] == 1, "R1 target hit")
+alertcondition(st2 == 2 and st2[1] == 1, "R2 target hit")
+alertcondition(st3 == 2 and st3[1] == 1, "R3 ORB broken as predicted")
+alertcondition(st6 == 2 and st6[1] == 1, "R6 returned to prior close")
