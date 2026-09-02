@@ -1,6 +1,6 @@
 //@version=6
 // ═══════════════════════════════════════════════════════════════════════════
-//  SESSION EDGE PROBABILITIES  —  7-rule statistical edge dashboard
+//  SESSION EDGE PROBABILITIES  —  8-rule statistical edge dashboard
 //  Futures-session framing (trading day opens 18:00 ET).
 //  Works identically on ANY chart timeframe: all logic is evaluated on a
 //  fixed calculation timeframe (default 5m) via request.security, so a 5m,
@@ -27,6 +27,20 @@ inOrbStart = input.int(570,  "ORB start          (570  = 09:30 ET)", group = gS)
 inOrbLen   = input.int(60,   "ORB length in minutes", group = gS)
 inR4Dead   = input.int(690,  "Rule 4 breakout deadline (690 = 11:30 ET)", tooltip = "Your note said 'before 10:30' but a 9:30-10:30 ORB cannot break before it is finished. Set ORB length to 30 and this to 630 if your ORB is really 9:30-10:00.", group = gS)
 
+g8 = "Rule 8 — afternoon reversal window"
+inR8LegA  = input.int(870, "Leg start   (870 = 14:30 ET)", group = g8)
+inR8LegB  = input.int(885, "Leg end / anchor (885 = 14:45 ET)", group = g8)
+inR8End   = input.int(915, "Reversal window end (915 = 15:15 ET)", group = g8)
+inR8MinLeg = input.float(0.05, "Minimum 14:30→14:45 move to qualify (%)", step = 0.01, minval = 0, group = g8)
+inR8Mode   = input.string("14:30 → 14:45 leg", "Which swing to retrace", options = ["14:30 → 14:45 leg", "Session swing (since NY open)", "Pivot swing"], tooltip = "Leg: the swing high/low of the 14:30-14:45 window itself. Session: the session extreme and the counter-extreme made after it. Pivot: the last confirmed pivot and the extreme since.", group = g8)
+inR8FibA   = input.float(50,   "Target 1 — retrace %", step = 0.1, minval = 1, group = g8)
+inR8FibB   = input.float(61.8, "Target 2 — retrace %", step = 0.1, minval = 1, group = g8)
+inR8FibC   = input.float(88,   "Target 3 — retrace %", step = 0.1, minval = 1, group = g8)
+inR8FibD   = input.float(100,  "Target 4 — retrace %", step = 0.1, minval = 1, group = g8)
+inR8PivLen = input.int(5, "Pivot lookback bars (Pivot swing mode)", minval = 2, group = g8)
+inR8Close  = input.bool(false, "Score on the 15:15 price instead of any touch", tooltip = "Off = the reversal only has to trade the retrace level at some point in the window. On = the 15:15 price itself must be past it. The 'On' setting is the stricter, more honest statistic.", group = g8)
+inR8Swing  = input.bool(true, "Plot the swing the retrace is measured from", group = g8)
+
 gP = "Static probabilities (%)"
 inP1 = input.float(95, "1  Monday → Sunday open retrace", group = gP)
 inP2 = input.float(72, "2  Return to midnight level",     group = gP)
@@ -35,6 +49,10 @@ inP4 = input.float(97, "4  Tuesday ORB breakout by deadline", group = gP)
 inP5 = input.float(77, "5  Green first NY hour → green day", group = gP)
 inP6 = input.float(82, "6  Open below prior close → return to it", group = gP)
 inP7 = input.float(88, "7  Inside day → break yesterday's body", group = gP)
+inP8a = input.float(70, "8a Retrace to target 1 (50%)",   group = gP)
+inP8b = input.float(58, "8b Retrace to target 2 (61.8%)", group = gP)
+inP8c = input.float(42, "8c Retrace to target 3 (88%)",   group = gP)
+inP8d = input.float(35, "8d Retrace to target 4 (100%)",  group = gP)
 
 gR = "Rule options"
 inRefSym   = input.symbol("CME_MINI:NQ1!", "Rule 5 reference symbol", tooltip = "Rule 5 is defined on NQ's first NY hour. Set to the chart symbol to make it self-referential.", group = gR)
@@ -74,6 +92,168 @@ f_ref(int nyStart, int sessEnd, int orbStart, int orbLen) =>
         done    := true
         fhGreen := close > nyOpen ? 1.0 : 0.0
     [fhGreen, pFh]
+
+// Rule 8 lives in its own pass: the 14:30-14:45 leg, the swing it belongs to,
+// and a four-step retrace ladder measured into 15:15.
+f_r8(int legA, int legB, int r8End, int nyStart, int sessEnd, float minLeg, string r8Mode, int pivLen, bool r8Close, float fA, float fB, float fC, float fD) =>
+    string tz = "America/New_York"
+    int mo = hour(time, tz) * 60 + minute(time, tz)
+    bool newTd = na(time_tradingday[1]) or time_tradingday != time_tradingday[1]
+
+    var float legPx   = na    // price at 14:30
+    var float anchor  = na    // price at 14:45 — where the retrace starts
+    var float closeR8 = na    // price at 15:15
+    var float dir8    = na    // +1 expect up, -1 expect down
+    var float leg8    = na    // the 14:30→14:45 move, in %
+    var float legHi   = na
+    var float legLo   = na
+    var float swHi    = na    // the swing the retrace is measured from
+    var float swLo    = na
+    var bool  armed   = false
+    var float lvlA = na
+    var float lvlB = na
+    var float lvlC = na
+    var float lvlD = na
+    var bool  hitA = false
+    var bool  hitB = false
+    var bool  hitC = false
+    var bool  hitD = false
+
+    // running session swing structure
+    var float sessHi     = na
+    var float sessLo     = na
+    var float minSinceHi = na
+    var float maxSinceLo = na
+    // last confirmed pivots and the extreme made since each
+    var float lastPH     = na
+    var float lastPL     = na
+    var float minSincePH = na
+    var float maxSincePL = na
+
+    // attempts, and hits per rung
+    var float n8 = 0.0
+    var float kA = 0.0
+    var float kB = 0.0
+    var float kC = 0.0
+    var float kD = 0.0
+
+    if newTd
+        if armed
+            n8 += 1
+            kA += hitA ? 1 : 0
+            kB += hitB ? 1 : 0
+            kC += hitC ? 1 : 0
+            kD += hitD ? 1 : 0
+        legPx   := na
+        anchor  := na
+        closeR8 := na
+        dir8    := na
+        leg8    := na
+        legHi   := na
+        legLo   := na
+        swHi    := na
+        swLo    := na
+        armed   := false
+        lvlA := na
+        lvlB := na
+        lvlC := na
+        lvlD := na
+        hitA := false
+        hitB := false
+        hitC := false
+        hitD := false
+        sessHi     := na
+        sessLo     := na
+        minSinceHi := na
+        maxSinceLo := na
+
+    // session extreme, and the counter-extreme made after it
+    if mo >= nyStart and mo < sessEnd
+        if na(sessHi) or high > sessHi
+            sessHi     := high
+            minSinceHi := low
+        else
+            minSinceHi := math.min(minSinceHi, low)
+        if na(sessLo) or low < sessLo
+            sessLo     := low
+            maxSinceLo := high
+        else
+            maxSinceLo := math.max(maxSinceLo, high)
+
+    // confirmed pivots, and the extreme made since each one
+    float ph    = ta.pivothigh(pivLen, pivLen)
+    float pl    = ta.pivotlow(pivLen, pivLen)
+    float lowN  = ta.lowest(low, pivLen + 1)    // covers the bars back to the pivot
+    float highN = ta.highest(high, pivLen + 1)
+    if not na(ph)
+        lastPH     := ph
+        minSincePH := lowN
+    else if not na(minSincePH)
+        minSincePH := math.min(minSincePH, low)
+    if not na(pl)
+        lastPL     := pl
+        maxSincePL := highN
+    else if not na(maxSincePL)
+        maxSincePL := math.max(maxSincePL, high)
+
+    // the 14:30 → 14:45 leg
+    if na(legPx) and mo >= legA and mo < legB
+        legPx := open
+    if mo >= legA and mo < legB
+        legHi := na(legHi) ? high : math.max(legHi, high)
+        legLo := na(legLo) ? low  : math.min(legLo, low)
+
+    // arm at 14:45: direction, swing, and the whole ladder are fixed here
+    if na(anchor) and mo >= legB and mo < r8End
+        anchor := open
+        if not na(legPx) and legPx != 0
+            leg8 := (anchor - legPx) / legPx * 100.0
+            if math.abs(leg8) >= minLeg
+                float d = leg8 < 0 ? 1.0 : -1.0     // leg fell → expect up, and vice versa
+                float sh = na
+                float sl = na
+                if r8Mode == "Session swing (since NY open)"
+                    sh := d == 1 ? sessHi : maxSinceLo
+                    sl := d == 1 ? minSinceHi : sessLo
+                else if r8Mode == "Pivot swing"
+                    sh := d == 1 ? lastPH : maxSincePL
+                    sl := d == 1 ? minSincePH : lastPL
+                else
+                    sh := legHi
+                    sl := legLo
+                if not na(sh) and not na(sl) and sh > sl
+                    float rng = sh - sl
+                    float a = d == 1 ? sl + rng * fA / 100.0 : sh - rng * fA / 100.0
+                    // the first rung must still lie ahead of price, or there is no trade
+                    if (d == 1 and a > anchor) or (d == -1 and a < anchor)
+                        armed := true
+                        dir8  := d
+                        swHi  := sh
+                        swLo  := sl
+                        lvlA  := a
+                        lvlB  := d == 1 ? sl + rng * fB / 100.0 : sh - rng * fB / 100.0
+                        lvlC  := d == 1 ? sl + rng * fC / 100.0 : sh - rng * fC / 100.0
+                        lvlD  := d == 1 ? sl + rng * fD / 100.0 : sh - rng * fD / 100.0
+
+    // walk the ladder
+    if armed and not r8Close and mo > legB and mo < r8End
+        if not hitA
+            hitA := dir8 == 1 ? high >= lvlA : low <= lvlA
+        if not hitB
+            hitB := dir8 == 1 ? high >= lvlB : low <= lvlB
+        if not hitC
+            hitC := dir8 == 1 ? high >= lvlC : low <= lvlC
+        if not hitD
+            hitD := dir8 == 1 ? high >= lvlD : low <= lvlD
+    if armed and na(closeR8) and mo >= r8End and mo < sessEnd
+        closeR8 := open
+        if r8Close
+            hitA := dir8 == 1 ? closeR8 >= lvlA : closeR8 <= lvlA
+            hitB := dir8 == 1 ? closeR8 >= lvlB : closeR8 <= lvlB
+            hitC := dir8 == 1 ? closeR8 >= lvlC : closeR8 <= lvlC
+            hitD := dir8 == 1 ? closeR8 >= lvlD : closeR8 <= lvlD
+
+    [f_state(armed, hitA), f_state(armed, hitB), f_state(armed, hitC), f_state(armed, hitD), lvlA, lvlB, lvlC, lvlD, f_rate(kA, n8), f_rate(kB, n8), f_rate(kC, n8), f_rate(kD, n8), n8, dir8, leg8, anchor, swHi, swLo]
 
 // Returns a flat tuple. Encoding for each rule state:
 //   0 = not applicable today   1 = armed / pending   2 = target already hit
@@ -295,6 +475,8 @@ string calcTf = inAutoTf and timeframe.in_seconds() < timeframe.in_seconds(inCal
 [st1, t1, r1, n1, st2, t2, r2, n2, st3, t3, r3, n3, st4, t4, r4, n4, st6, t6, r6, n6, st7, t7u, r7, n7, t7d, fhG, pFh, pGrn, grnNow, tdDowF, orbH, orbL, midPx, sunOpen, prevCls, lowFirst, orbDoneF, tdStamp] = request.security(syminfo.tickerid, calcTf, f_core(inDayStart, inNyOpen, inRthClose, inSessEnd, inOrbStart, inOrbLen, inR4Dead))
 
 // Rule 5's trigger comes from the reference symbol (NQ by default)
+[st8a, st8b, st8c, st8d, lvl8a, lvl8b, lvl8c, lvl8d, r8a, r8b, r8c, r8d, n8, dir8, leg8, anchor8, sw8h, sw8l] = request.security(syminfo.tickerid, calcTf, f_r8(inR8LegA, inR8LegB, inR8End, inNyOpen, inSessEnd, inR8MinLeg, inR8Mode, inR8PivLen, inR8Close, inR8FibA, inR8FibB, inR8FibC, inR8FibD))
+
 string ref5 = inUseSelf5 ? syminfo.tickerid : inRefSym
 [refFh, refPFh] = request.security(ref5, calcTf, f_ref(inNyOpen, inSessEnd, inOrbStart, inOrbLen))
 
@@ -309,6 +491,14 @@ if newTdTop and not na(refPFh)
 float st5 = na(refFh) ? 0.0 : (refFh == 1 ? (not na(grnNow) and grnNow == 1 ? 2.0 : 1.0) : 0.0)
 float r5  = n5 > 0 ? k5 / n5 * 100.0 : na
 
+// ── Rule 8 collapsed to one row: ladder progress, next rung, decay curve ───
+float st8all = st8a == 0 ? 0.0 : (st8d == 2 ? 2.0 : 1.0)
+int   nx8    = st8a == 0 ? 0 : st8a != 2 ? 1 : st8b != 2 ? 2 : st8c != 2 ? 3 : st8d != 2 ? 4 : 4
+float nxLvl  = nx8 == 1 ? lvl8a : nx8 == 2 ? lvl8b : nx8 == 3 ? lvl8c : nx8 == 4 ? lvl8d : na
+float nxP    = nx8 == 1 ? inP8a : nx8 == 2 ? inP8b : nx8 == 3 ? inP8c : nx8 == 4 ? inP8d : na
+float nxR    = nx8 == 1 ? r8a   : nx8 == 2 ? r8b   : nx8 == 3 ? r8c   : nx8 == 4 ? r8d   : na
+float nxFib  = nx8 == 1 ? inR8FibA : nx8 == 2 ? inR8FibB : nx8 == 3 ? inR8FibC : nx8 == 4 ? inR8FibD : na
+
 // ───────────────────────────── LEVELS ──────────────────────────────────────
 plot(inShowLevels and st1 > 0 ? t1     : na, "Sunday open",   color.new(color.orange, 0),  2, plot.style_linebr)
 plot(inShowLevels and st2 > 0 ? t2     : na, "Midnight",      color.new(color.aqua, 0),    1, plot.style_linebr)
@@ -317,16 +507,24 @@ plot(inShowLevels and orbDoneF == 1 ? orbH : na, "ORB high",  color.new(color.li
 plot(inShowLevels and orbDoneF == 1 ? orbL : na, "ORB low",   color.new(color.red, 0),     1, plot.style_linebr)
 plot(inShowLevels and st7 > 0 ? t7u : na, "Inside-day up",    color.new(color.yellow, 40), 1, plot.style_linebr)
 plot(inShowLevels and st7 > 0 ? t7d : na, "Inside-day down",  color.new(color.yellow, 40), 1, plot.style_linebr)
+plot(inShowLevels and st8a > 0 ? anchor8 : na, "14:45 anchor", color.new(color.white, 20), 1, plot.style_linebr)
+plot(inShowLevels and st8a > 0 ? lvl8a : na, "R8 target 1", st8a == 2 ? color.new(color.purple, 65) : color.new(color.purple, 0), 2, plot.style_linebr)
+plot(inShowLevels and st8b > 0 ? lvl8b : na, "R8 target 2", st8b == 2 ? color.new(color.purple, 65) : color.new(color.purple, 15), 1, plot.style_linebr)
+plot(inShowLevels and st8c > 0 ? lvl8c : na, "R8 target 3", st8c == 2 ? color.new(color.purple, 65) : color.new(color.purple, 30), 1, plot.style_linebr)
+plot(inShowLevels and st8d > 0 ? lvl8d : na, "R8 target 4", st8d == 2 ? color.new(color.purple, 65) : color.new(color.purple, 45), 1, plot.style_linebr)
+plot(inShowLevels and inR8Swing and st8a > 0 ? sw8h : na, "R8 swing high", color.new(color.gray, 45), 1, plot.style_linebr)
+plot(inShowLevels and inR8Swing and st8a > 0 ? sw8l : na, "R8 swing low",  color.new(color.gray, 45), 1, plot.style_linebr)
 
 // ─────────────────────────── DASHBOARD ─────────────────────────────────────
 f_stateTxt(float s) => s == 2 ? "HIT" : s == 1 ? "LIVE" : "—"
 f_stateCol(float s) => s == 2 ? color.new(color.gray, 0) : s == 1 ? color.new(color.lime, 0) : color.new(color.gray, 60)
 f_px(float v) => na(v) ? "—" : str.tostring(math.round_to_mintick(v))
 f_pct(float v) => na(v) ? "—" : str.tostring(v, "#.#") + "%"
+f_n(float v)   => na(v) ? "–" : str.tostring(v, "#")
 
 var table tb = table.new(
    inTablePos == "Top Right" ? position.top_right : inTablePos == "Top Left" ? position.top_left : inTablePos == "Bottom Right" ? position.bottom_right : inTablePos == "Bottom Left" ? position.bottom_left : position.middle_right,
-   6, 9, border_width = 1, border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 50))
+   6, 10, border_width = 1, border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 50))
 
 string tsz = inTableSize == "Tiny" ? size.tiny : inTableSize == "Small" ? size.small : inTableSize == "Normal" ? size.normal : size.large
 
@@ -340,8 +538,18 @@ f_row(int r, string nm, float st, float lvl, float sp, float lr, float ns, strin
     table.cell(tb, 4, r, na(lr) ? "—" : f_pct(lr) + " (" + str.tostring(ns, "#") + ")", text_color = na(ns) or ns < inMinN ? color.new(color.gray, 30) : (na(lr) ? fg : (lr >= sp ? color.new(color.lime, 0) : color.new(color.orange, 0))), bgcolor = bg, text_size = tsz)
     table.cell(tb, 5, r, note,           text_color = color.new(color.gray, 25), text_halign = text.align_left, bgcolor = bg, text_size = tsz)
 
+f_row8(int r, float st, string lad, float lvl, float sp, float lr, float ns, string note) =>
+    color bg = st == 1 ? color.new(color.green, 82) : st == 2 ? color.new(color.gray, 88) : color.new(color.black, 92)
+    color fg = st > 0 ? color.new(color.white, 0) : color.new(color.gray, 35)
+    table.cell(tb, 0, r, "8 14:45 retrace", text_color = fg, text_halign = text.align_left, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 1, r, lad, text_color = st == 2 ? color.new(color.gray, 0) : color.new(color.lime, 0), bgcolor = bg, text_size = tsz)
+    table.cell(tb, 2, r, f_px(lvl), text_color = fg, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 3, r, f_pct(sp), text_color = st > 0 ? color.new(color.yellow, 0) : fg, bgcolor = bg, text_size = tsz)
+    table.cell(tb, 4, r, na(lr) ? "—" : f_pct(lr) + " (" + str.tostring(ns, "#") + ")", text_color = na(ns) or ns < inMinN or na(lr) ? color.new(color.gray, 30) : (lr >= sp ? color.new(color.lime, 0) : color.new(color.orange, 0)), bgcolor = bg, text_size = tsz)
+    table.cell(tb, 5, r, note, text_color = color.new(color.gray, 25), text_halign = text.align_left, bgcolor = bg, text_size = tsz)
+
 if inShowTable and barstate.islast
-    table.clear(tb, 0, 0, 5, 8)
+    table.clear(tb, 0, 0, 5, 9)
     table.cell(tb, 0, 0, "RULE",   text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
     table.cell(tb, 1, 0, "STATE",  text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
     table.cell(tb, 2, 0, "TARGET", text_color = color.white, bgcolor = color.new(color.blue, 55), text_size = tsz)
@@ -371,6 +579,12 @@ if inShowTable and barstate.islast
     if not inActiveOnly or st7 > 0
         f_row(r, "7 Inside-day break", st7, t7u, inP7, r7, n7, st7 > 0 ? "body " + f_px(t7d) + " / " + f_px(t7u) : "not inside")
         r += 1
+    if not inActiveOnly or st8a > 0
+        string lad8 = st8a == 0 ? "— — — —" : (st8a == 2 ? "●" : "○") + (st8b == 2 ? "●" : "○") + (st8c == 2 ? "●" : "○") + (st8d == 2 ? "●" : "○")
+        string dec8 = f_n(r8a) + "/" + f_n(r8b) + "/" + f_n(r8c) + "/" + f_n(r8d)
+        string ctx8 = st8a == 0 ? (na(leg8) ? "leg pending" : "leg " + str.tostring(leg8, "#.##") + "% — no setup") : (dir8 == 1 ? "UP " : "DOWN ") + str.tostring(leg8, "#.##") + "% · next " + str.tostring(nxFib, "#.#") + "% · " + dec8
+        f_row8(r, st8all, lad8, nxLvl, nxP, nxR, n8, ctx8)
+        r += 1
     if r == 1
         table.cell(tb, 0, 1, "No rules live right now", text_color = color.new(color.gray, 20), text_size = tsz)
 
@@ -388,6 +602,7 @@ if inShowLabel and barstate.islast
     txt += f_lbl("⑤ Green day", st5, inP5, r5, n5)
     txt += f_lbl("⑥ Prior close " + f_px(t6), st6, inP6, r6, n6)
     txt += f_lbl("⑦ Inside break", st7, inP7, r7, n7)
+    txt += f_lbl("⑧ " + (dir8 == 1 ? "UP" : "DOWN") + " to " + str.tostring(nxFib, "#.#") + "% " + f_px(nxLvl), st8all, nxP, nxR, n8)
     if txt == "SESSION EDGE"
         txt += "\nno rules live"
     label.delete(lb)
@@ -400,6 +615,11 @@ alertcondition(st3 == 1 and st3[1] != 1, "R3 armed: ORB first-extreme set")
 alertcondition(st4 == 1 and st4[1] != 1, "R4 armed: Tuesday ORB breakout window")
 alertcondition(st6 == 1 and st6[1] != 1, "R6 armed: opened below prior close")
 alertcondition(st7 == 1 and st7[1] != 1, "R7 armed: inside day")
+alertcondition(st8a == 1 and st8a[1] != 1, "R8 armed: 14:45 retrace setup")
+alertcondition(st8a == 2 and st8a[1] == 1, "R8 target 1 reached")
+alertcondition(st8b == 2 and st8b[1] == 1, "R8 target 2 reached")
+alertcondition(st8c == 2 and st8c[1] == 1, "R8 target 3 reached")
+alertcondition(st8d == 2 and st8d[1] == 1, "R8 target 4 reached")
 alertcondition(st1 == 2 and st1[1] == 1, "R1 target hit")
 alertcondition(st2 == 2 and st2[1] == 1, "R2 target hit")
 alertcondition(st3 == 2 and st3[1] == 1, "R3 ORB broken as predicted")
