@@ -53,6 +53,8 @@ namespace FVG
         bool  Bullish;       // true = created as a bullish (support) gap
         int   State;
         int   InvertIndex;   // bar where it flipped to an IFVG, -1 if never
+        bool  WickFullFired; // full wick sweep already reported for this zone
+        bool  WickHalfFired; // 50% wick tap already reported for this zone
 
         // drawing bookkeeping
         int   BoxLine;
@@ -87,7 +89,11 @@ enum e_Inputs
     IN_ALERT_NEW,
     IN_ALERT_INVERT,
     IN_ALERT_SOUND,
-    IN_DRAW_OUTLINE
+    IN_DRAW_OUTLINE,
+    IN_ALERT_WICK_FULL,
+    IN_ALERT_WICK_FULL_SOUND,
+    IN_ALERT_WICK_HALF,
+    IN_ALERT_WICK_HALF_SOUND
 };
 
 // Subgraph index constants (these exist purely so the user can pick colors
@@ -360,6 +366,20 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc)
         sc.Input[IN_DRAW_OUTLINE].Name = "Draw Zone Outline";
         sc.Input[IN_DRAW_OUTLINE].SetYesNo(0);
 
+        sc.Input[IN_ALERT_WICK_FULL].Name = "Alert: Full Wick Sweep (Body Held Outside)";
+        sc.Input[IN_ALERT_WICK_FULL].SetYesNo(0);
+
+        sc.Input[IN_ALERT_WICK_FULL_SOUND].Name = "   Full Wick Sweep - Alert Sound Number";
+        sc.Input[IN_ALERT_WICK_FULL_SOUND].SetInt(2);
+        sc.Input[IN_ALERT_WICK_FULL_SOUND].SetIntLimits(1, 500);
+
+        sc.Input[IN_ALERT_WICK_HALF].Name = "Alert: 50% Wick Tap (Body Held Outside)";
+        sc.Input[IN_ALERT_WICK_HALF].SetYesNo(0);
+
+        sc.Input[IN_ALERT_WICK_HALF_SOUND].Name = "   50% Wick Tap - Alert Sound Number";
+        sc.Input[IN_ALERT_WICK_HALF_SOUND].SetInt(3);
+        sc.Input[IN_ALERT_WICK_HALF_SOUND].SetIntLimits(1, 500);
+
         return;
     }
 
@@ -403,6 +423,10 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc)
     const bool  AlertNew      = sc.Input[IN_ALERT_NEW].GetYesNo() != 0;
     const bool  AlertInvert   = sc.Input[IN_ALERT_INVERT].GetYesNo() != 0;
     const int   AlertSound    = sc.Input[IN_ALERT_SOUND].GetInt();
+    const bool  AlertWickFull = sc.Input[IN_ALERT_WICK_FULL].GetYesNo() != 0;
+    const int   WickFullSound = sc.Input[IN_ALERT_WICK_FULL_SOUND].GetInt();
+    const bool  AlertWickHalf = sc.Input[IN_ALERT_WICK_HALF].GetYesNo() != 0;
+    const int   WickHalfSound = sc.Input[IN_ALERT_WICK_HALF_SOUND].GetInt();
 
     // -------------------------------------------------------------------------
     //  Full recalculation: wipe everything and start clean
@@ -449,6 +473,59 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc)
             // running here or IFVGs would essentially never form.
             if (G.State == GAP_ACTIVE || G.State == GAP_MITIGATED)
             {
+                // --- wick rejection alerts -----------------------------------
+                // The wick reaches into the zone but the whole body (open AND
+                // close) stays on the side price approached from, i.e. the zone
+                // was probed and held. Each event fires once per zone.
+                if (AlertWickFull || AlertWickHalf)
+                {
+                    const float BodyLow  = (sc.Open[i] < sc.Close[i]) ? sc.Open[i]  : sc.Close[i];
+                    const float BodyHigh = (sc.Open[i] > sc.Close[i]) ? sc.Open[i]  : sc.Close[i];
+
+                    const bool BodyHeldOutside = G.Bullish ? (BodyLow  >= G.Top)
+                                                           : (BodyHigh <= G.Bottom);
+
+                    if (BodyHeldOutside)
+                    {
+                        // Did the wick clear the far edge, or only reach 50%?
+                        const bool WickSweptAll = G.Bullish ? (sc.Low[i]  <= G.Bottom)
+                                                            : (sc.High[i] >= G.Top);
+                        const bool WickHitMid   = G.Bullish ? (sc.Low[i]  <= Mid)
+                                                            : (sc.High[i] >= Mid);
+
+                        if (WickSweptAll && !G.WickFullFired)
+                        {
+                            G.WickFullFired = true;
+                            G.WickHalfFired = true;   // a full sweep supersedes the 50% event
+
+                            if (AlertWickFull && CanAlert)
+                            {
+                                SCString Msg;
+                                Msg.Format("%s: %s FVG fully swept by wick, body held outside. Zone %s - %s",
+                                           sc.Symbol.GetChars(),
+                                           G.Bullish ? "bullish" : "bearish",
+                                           sc.FormatGraphValue(G.Bottom, sc.GetValueFormat()).GetChars(),
+                                           sc.FormatGraphValue(G.Top,    sc.GetValueFormat()).GetChars());
+                                sc.SetAlert(WickFullSound, Msg);
+                            }
+                        }
+                        else if (WickHitMid && !G.WickHalfFired && !G.WickFullFired)
+                        {
+                            G.WickHalfFired = true;
+
+                            if (AlertWickHalf && CanAlert)
+                            {
+                                SCString Msg;
+                                Msg.Format("%s: %s FVG wicked to 50%% and rejected, body held outside. Mid %s",
+                                           sc.Symbol.GetChars(),
+                                           G.Bullish ? "bullish" : "bearish",
+                                           sc.FormatGraphValue(Mid, sc.GetValueFormat()).GetChars());
+                                sc.SetAlert(WickHalfSound, Msg);
+                            }
+                        }
+                    }
+                }
+
                 // --- has price CLOSED all the way through?  -> inversion -----
                 const bool Inverted = G.Bullish ? (sc.Close[i] < G.Bottom)
                                                 : (sc.Close[i] > G.Top);
@@ -543,6 +620,8 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc)
                 G.Bullish     = NewBull;
                 G.State       = GAP_ACTIVE;
                 G.InvertIndex = -1;
+                G.WickFullFired = false;
+                G.WickHalfFired = false;
                 G.BoxLine    = r_NextLineNumber++;
                 G.MidLine    = r_NextLineNumber++;
                 G.TextLine   = r_NextLineNumber++;
