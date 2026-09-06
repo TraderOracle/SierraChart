@@ -1,4 +1,8 @@
 // ============================================================================
+//  CandleGapLines.cpp
+//
+//  Sierra Chart ACSIL study.
+//
 //  Draws a horizontal line extending to the right for every candle gap that
 //  occurs between two same-colored candles (e.g. two greens in a row where
 //  the second candle's Low is above the first candle's High).
@@ -11,6 +15,9 @@
 //  - When a later candle touches a line's price level, the line is terminated
 //    exactly at that bar and a "line filled" alert is fired.
 //  - An alert is also fired when a new gap is detected.
+//
+//  Build: place in <SierraChart>\ACS_Source and use
+//         Analysis >> Build Custom Studies DLL.
 // ============================================================================
 
 #include "sierrachart.h"
