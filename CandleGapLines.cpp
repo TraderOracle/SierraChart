@@ -1,20 +1,50 @@
 // ============================================================================
 //  CandleGapLines.cpp
 //
-//  Sierra Chart ACSIL study.
+//  Sierra Chart ACSIL study.                                  Version 1.5.0
 //
 //  Draws a horizontal line extending to the right for every candle gap that
-//  occurs between two same-colored candles (e.g. two greens in a row where
-//  the second candle's Low is above the first candle's High).
+//  occurs between two same-colored candles (two greens in a row where the
+//  second candle's body opens above the first candle's close, and the mirror
+//  case for reds). Lines are tracked until price comes back and touches them.
 //
-//  - Lines are drawn with s_UseTool / DRAWING_LINE and are extended bar by bar.
+//  Behaviour
+//  ---------
+//  - Lines are drawn with s_UseTool / DRAWING_LINE and extended bar by bar.
 //    DrawLineUntilFutureIntersection is deliberately NOT used, because it does
 //    not report back when the line is terminated.
 //  - Every line is tracked in a persistent std::vector, so the study always
 //    knows where all the lines are, which are active, and which were filled.
 //  - When a later candle touches a line's price level, the line is terminated
 //    exactly at that bar and a "line filled" alert is fired.
-//  - An alert is also fired when a new gap is detected.
+//  - A gap that is filled within the first few bars is deleted again and never
+//    alerts, so only lines that actually held are kept.
+//  - An on-screen arrow and text show the direction, distance and proximity
+//    weighted odds of the nearest unfilled line.
+//
+//  Version history
+//  ---------------
+//  1.0.0  Initial version. Gap detection between same coloured candles,
+//         persistent line registry, right-extending lines, termination at the
+//         touching bar, alerts on gap creation and on fill.
+//  1.0.1  Build fix. Drawing removal uses sc.DeleteACSChartDrawing; the
+//         UTAM_DELETE_* AddMethod values do not exist.
+//  1.1.0  Gap source selectable between wicks and bodies. The "bars in between
+//         may not cross the gap" rule became an option and now defaults off,
+//         since the middle candle of an imbalance always crosses it. Added a
+//         diagnostic summary to the message log.
+//  1.2.0  Fill alerts suppressed when too few bars separate the gap from the
+//         fill.
+//  1.3.0  Defaults aligned with VolImbRenko: adjacent candles, body based
+//         gaps, near edge line level, which puts the line on the second
+//         candle's open. Colour test now requires the direction to match the
+//         candle colour rather than only requiring both candles to match.
+//  1.4.0  A line filled within N bars of forming is deleted from the chart and
+//         issues no alerts. The gap alert waits for the line to survive that
+//         window. Historical passes skip the draw-then-delete cycle.
+//  1.5.0  Nearest unfilled line display: coloured up/down arrow plus text with
+//         direction, distance in ticks, target level and inverse-distance odds.
+//         Exposed as subgraphs 3, 4 and 5 for spreadsheets and alerts.
 //
 //  Build: place in <SierraChart>\ACS_Source and use
 //         Analysis >> Build Custom Studies DLL.
@@ -22,6 +52,8 @@
 
 #include "sierrachart.h"
 #include <vector>
+
+#define CGL_VERSION "1.5.0"
 
 SCDLLName("Candle Gap Lines")
 
@@ -145,10 +177,13 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
     // -----------------------------------------------------------------------
     if (sc.SetDefaults)
     {
-        sc.GraphName        = "Candle Gap Lines";
-        sc.StudyDescription = "Draws right-extending lines from candle gaps between same-colored "
-                              "candles. Tracks every line internally, terminates a line at the bar "
-                              "that touches it, and alerts on both gap creation and gap fill.";
+        sc.GraphName        = "Candle Gap Lines v" CGL_VERSION;
+        sc.StudyDescription = "v" CGL_VERSION " - Draws right-extending lines from candle gaps "
+                              "between same-colored candles. Tracks every line internally, "
+                              "terminates a line at the bar that touches it, deletes lines filled "
+                              "within the first few bars, and alerts on gap creation and gap fill. "
+                              "Shows an arrow and text for the direction, distance and proximity "
+                              "weighted odds of the nearest unfilled line.";
 
         sc.GraphRegion            = 0;
         sc.AutoLoop               = 0;   // manual looping
@@ -745,7 +780,8 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
     if (Diagnostics && BarsProcessed > 10)
     {
         SCString Message;
-        Message.Format("Candle Gap Lines: scanned %d bars | raw gaps %d | rejected: color %d, size %d, crossed %d | queued %d | drawn %d | discarded as quick fill %d | largest gap %d ticks",
+        Message.Format("Candle Gap Lines v%s: scanned %d bars | raw gaps %d | rejected: color %d, size %d, crossed %d | queued %d | drawn %d | discarded as quick fill %d | largest gap %d ticks",
+                       CGL_VERSION,
                        BarsProcessed,
                        RawGapsFound,
                        RejectedByColor,
