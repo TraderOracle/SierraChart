@@ -29,7 +29,7 @@
 #include "sierrachart.h"
 #include <vector>
 
-SCDLLName("FVG and IFVG")
+SCDLLName("ICT Fair Value Gaps and Inverse")
 
 // -----------------------------------------------------------------------------
 //  Data model
@@ -261,7 +261,7 @@ SCSFExport scsf_FairValueGaps(SCStudyInterfaceRef sc)
     // -------------------------------------------------------------------------
     if (sc.SetDefaults)
     {
-        sc.GraphName             = "Fair Value Gaps (FVG / IFVG)";
+        sc.GraphName             = "ICT Fair Value Gaps and Inverse";
         sc.StudyDescription      = "Draws unfilled 3-bar imbalances (Fair Value Gaps) "
                                    "and flips them into Inverse FVGs once price closes "
                                    "through them.";
