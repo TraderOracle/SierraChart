@@ -126,10 +126,21 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
     SCInputRef In_Diagnostics      = sc.Input[15];
     SCInputRef In_MinBarsForFill   = sc.Input[16];
     SCInputRef In_MinBarsToDraw    = sc.Input[17];
+    SCInputRef In_ShowDisplay      = sc.Input[18];
+    SCInputRef In_DisplayOffsetX   = sc.Input[19];
+    SCInputRef In_DisplayOffsetY   = sc.Input[20];
+    SCInputRef In_ArrowTextGap     = sc.Input[21];
+    SCInputRef In_ArrowFontSize    = sc.Input[22];
+    SCInputRef In_TextFontSize     = sc.Input[23];
+    SCInputRef In_UpColor          = sc.Input[24];
+    SCInputRef In_DownColor        = sc.Input[25];
 
     SCSubgraphRef SG_ActiveCount   = sc.Subgraph[0];
     SCSubgraphRef SG_NewGapFlag    = sc.Subgraph[1];
     SCSubgraphRef SG_FilledFlag    = sc.Subgraph[2];
+    SCSubgraphRef SG_NextDirection = sc.Subgraph[3];
+    SCSubgraphRef SG_NextDistance  = sc.Subgraph[4];
+    SCSubgraphRef SG_UpProbability = sc.Subgraph[5];
 
     // -----------------------------------------------------------------------
     if (sc.SetDefaults)
@@ -211,6 +222,35 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
         In_MinBarsToDraw.SetInt(1);
         In_MinBarsToDraw.SetIntLimits(0, 1000);
 
+        In_ShowDisplay.Name = "Show Nearest Line Direction Display";
+        In_ShowDisplay.SetYesNo(1);
+
+        In_DisplayOffsetX.Name = "Display Position - Bars Right Of Last Bar";
+        In_DisplayOffsetX.SetInt(4);
+        In_DisplayOffsetX.SetIntLimits(0, 500);
+
+        In_DisplayOffsetY.Name = "Display Position - Ticks Above Last Price";
+        In_DisplayOffsetY.SetInt(40);
+        In_DisplayOffsetY.SetIntLimits(-100000, 100000);
+
+        In_ArrowTextGap.Name = "Gap Between Arrow And Text (Ticks)";
+        In_ArrowTextGap.SetInt(10);
+        In_ArrowTextGap.SetIntLimits(0, 100000);
+
+        In_ArrowFontSize.Name = "Arrow Font Size";
+        In_ArrowFontSize.SetInt(24);
+        In_ArrowFontSize.SetIntLimits(4, 200);
+
+        In_TextFontSize.Name = "Text Font Size";
+        In_TextFontSize.SetInt(12);
+        In_TextFontSize.SetIntLimits(4, 200);
+
+        In_UpColor.Name = "Display Color - Up";
+        In_UpColor.SetColor(0, 255, 0);
+
+        In_DownColor.Name = "Display Color - Down";
+        In_DownColor.SetColor(255, 0, 0);
+
         SG_ActiveCount.Name       = "Active Line Count";
         SG_ActiveCount.DrawStyle  = DRAWSTYLE_IGNORE;
 
@@ -219,6 +259,15 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
 
         SG_FilledFlag.Name        = "Line Filled Flag";
         SG_FilledFlag.DrawStyle   = DRAWSTYLE_IGNORE;
+
+        SG_NextDirection.Name      = "Next Line Direction";
+        SG_NextDirection.DrawStyle = DRAWSTYLE_IGNORE;
+
+        SG_NextDistance.Name       = "Next Line Distance (Ticks)";
+        SG_NextDistance.DrawStyle  = DRAWSTYLE_IGNORE;
+
+        SG_UpProbability.Name      = "Up Probability (Percent)";
+        SG_UpProbability.DrawStyle = DRAWSTYLE_IGNORE;
 
         return;
     }
@@ -735,7 +784,134 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
     }
 
     // -----------------------------------------------------------------------
-    // 5. Publish the active line count so other studies / spreadsheets can see it.
+    // 5. Nearest unfilled line: direction, distance, proximity based odds.
+    //
+    //    The odds are a straight inverse-distance split between the closest
+    //    unfilled line above and the closest one below. If the line above sits
+    //    10 ticks away and the one below 30, up gets 75%. This is a proximity
+    //    weighting, not a measured hit rate.
+    // -----------------------------------------------------------------------
+    const int DISPLAY_ARROW_LINENUMBER = 1000000;
+    const int DISPLAY_TEXT_LINENUMBER  = 1000001;
+
+    const float CurrentPrice = sc.BaseData[SC_LAST][LastBarIndex];
+
+    bool  HasAbove     = false;
+    bool  HasBelow     = false;
+    float NearestAbove = 0.0f;
+    float NearestBelow = 0.0f;
+
+    for (size_t LineIdx = 0; LineIdx < p_Lines->size(); ++LineIdx)
+    {
+        const s_GapLine& Line = (*p_Lines)[LineIdx];
+
+        if (!Line.IsActive || !Line.IsConfirmed)
+            continue;
+
+        if (Line.Level > CurrentPrice)
+        {
+            if (!HasAbove || Line.Level < NearestAbove)
+            {
+                NearestAbove = Line.Level;
+                HasAbove     = true;
+            }
+        }
+        else if (Line.Level < CurrentPrice)
+        {
+            if (!HasBelow || Line.Level > NearestBelow)
+            {
+                NearestBelow = Line.Level;
+                HasBelow     = true;
+            }
+        }
+    }
+
+    float UpProbability   = 0.0f;
+    int   NextDirection   = 0;
+    int   NextDistTicks   = 0;
+    float NextLevel       = 0.0f;
+
+    if (HasAbove || HasBelow)
+    {
+        const float DistAbove = HasAbove ? (NearestAbove - CurrentPrice) : 0.0f;
+        const float DistBelow = HasBelow ? (CurrentPrice - NearestBelow) : 0.0f;
+
+        if (HasAbove && HasBelow)
+        {
+            const float TotalDist = DistAbove + DistBelow;
+            UpProbability = (TotalDist > 0.0f) ? (DistBelow / TotalDist) : 0.5f;
+        }
+        else
+        {
+            UpProbability = HasAbove ? 1.0f : 0.0f;
+        }
+
+        const bool GoingUp = (UpProbability >= 0.5f);
+
+        NextDirection = GoingUp ? 1 : -1;
+        NextLevel     = GoingUp ? NearestAbove : NearestBelow;
+        NextDistTicks = (int)((GoingUp ? DistAbove : DistBelow) / TickSize + 0.5f);
+    }
+
+    if (In_ShowDisplay.GetYesNo() && NextDirection != 0)
+    {
+        const bool     GoingUp      = (NextDirection == 1);
+        const uint32_t DisplayColor = GoingUp ? In_UpColor.GetColor() : In_DownColor.GetColor();
+
+        const float ArrowValue = CurrentPrice + In_DisplayOffsetY.GetInt() * TickSize;
+        const float TextValue  = ArrowValue - In_ArrowTextGap.GetInt() * TickSize;
+        const int   AnchorIndex = LastBarIndex + In_DisplayOffsetX.GetInt();
+
+        // UTF-8 for the black up/down pointing triangles, written as explicit
+        // byte escapes so the source file encoding cannot affect it.
+        const char* ArrowGlyph = GoingUp ? "\xE2\x96\xB2" : "\xE2\x96\xBC";
+
+        s_UseTool ArrowTool;
+        ArrowTool.Clear();
+        ArrowTool.ChartNumber           = sc.ChartNumber;
+        ArrowTool.DrawingType           = DRAWING_TEXT;
+        ArrowTool.LineNumber            = DISPLAY_ARROW_LINENUMBER;
+        ArrowTool.BeginIndex            = AnchorIndex;
+        ArrowTool.BeginValue            = ArrowValue;
+        ArrowTool.Color                 = DisplayColor;
+        ArrowTool.FontSize              = In_ArrowFontSize.GetInt();
+        ArrowTool.FontBold              = 1;
+        ArrowTool.Text                  = ArrowGlyph;
+        ArrowTool.AddMethod             = UTAM_ADD_OR_ADJUST;
+        ArrowTool.AddAsUserDrawnDrawing = 0;
+        sc.UseTool(ArrowTool);
+
+        SCString DisplayText;
+        DisplayText.Format("%s  %d ticks to %s   |  up %d%%  dn %d%%",
+                           GoingUp ? "UP" : "DOWN",
+                           NextDistTicks,
+                           sc.FormatGraphValue(NextLevel, sc.GetValueFormat()).GetChars(),
+                           (int)(UpProbability * 100.0f + 0.5f),
+                           100 - (int)(UpProbability * 100.0f + 0.5f));
+
+        s_UseTool TextTool;
+        TextTool.Clear();
+        TextTool.ChartNumber           = sc.ChartNumber;
+        TextTool.DrawingType           = DRAWING_TEXT;
+        TextTool.LineNumber            = DISPLAY_TEXT_LINENUMBER;
+        TextTool.BeginIndex            = AnchorIndex;
+        TextTool.BeginValue            = TextValue;
+        TextTool.Color                 = DisplayColor;
+        TextTool.FontSize              = In_TextFontSize.GetInt();
+        TextTool.FontBold              = 1;
+        TextTool.Text                  = DisplayText;
+        TextTool.AddMethod             = UTAM_ADD_OR_ADJUST;
+        TextTool.AddAsUserDrawnDrawing = 0;
+        sc.UseTool(TextTool);
+    }
+    else
+    {
+        DeleteGapLine(sc, DISPLAY_ARROW_LINENUMBER);
+        DeleteGapLine(sc, DISPLAY_TEXT_LINENUMBER);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6. Publish the active line count so other studies / spreadsheets can see it.
     // -----------------------------------------------------------------------
     int ActiveCount = 0;
     for (size_t LineIdx = 0; LineIdx < p_Lines->size(); ++LineIdx)
@@ -745,5 +921,10 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
     }
 
     for (int BarIndex = sc.UpdateStartIndex; BarIndex <= LastBarIndex; ++BarIndex)
-        SG_ActiveCount[BarIndex] = (float)ActiveCount;
+    {
+        SG_ActiveCount[BarIndex]   = (float)ActiveCount;
+        SG_NextDirection[BarIndex] = (float)NextDirection;
+        SG_NextDistance[BarIndex]  = (float)NextDistTicks;
+        SG_UpProbability[BarIndex] = UpProbability * 100.0f;
+    }
 }
