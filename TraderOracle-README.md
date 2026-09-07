@@ -10,27 +10,6 @@ A collection of custom studies (ACSIL / C++) for [Sierra Chart](https://www.sier
 | `SCStringUtils.cpp` | Standalone `SCString` helper library — string prefix/suffix checks, case conversion, trimming, find/replace, split/join, padding, and numeric/bool conversions for Sierra Chart's `SCString` type. |
 | `TraderOracle.cpp` | Multi-study DLL (`SCDLLName("Trader Oracle DLL")`) bundling several indicators: Delta Intensity, Olympus (a composite multi-indicator signal study, plus an older `OlympusOLD` version), a Squeeze indicator, Linda Raschke's MACD/Anti-Setup studies, Waddah Explosion, and a DTS Scalper volume-split study. |
 
-> Update this table as you add more files — one row per study/file, with a short note on what it does.
-
-## 🗂️ How This Repo Is Organized
-
-- Most `.cpp` files are standalone Sierra Chart custom studies (`SCSFExport scsf_*`), meant to be compiled into a DLL via Sierra Chart's Custom Study build process.
-- Some files (e.g. `SCStringUtils.cpp`) are shared utility code — not studies themselves, but helpers meant to be `#include`d into a study source file.
-
-## 🚀 Getting Started
-
-These files are written against Sierra Chart's ACSIL API and require `sierrachart.h` (provided by a Sierra Chart installation) to compile.
-
-1. Clone this repo, or copy the desired `.cpp` file, into your Sierra Chart `ACS_Source` folder.
-2. Open Sierra Chart → **Analysis → Build Custom Studies DLL**, and build the file.
-3. Add the resulting study to a chart via **Analysis → Studies**.
-
-```bash
-git clone https://github.com/your-username/your-repo.git
-```
-
-## 📄 File Notes
-
 ### `VolImbRenko.cpp`
 - Study function: `scsf_VolImbRenko`
 - Detects "volume imbalance" candles: two consecutive bars of the same color where the current bar's open is beyond the prior bar's close (a price gap between bar bodies).
@@ -69,13 +48,6 @@ A larger DLL containing multiple independent studies, each with its own `SCSFExp
 - Large blocks of commented-out code (an alternate line-intersection cleanup routine, a `CreateProcess`/notepad launcher, a graphics-settings example, a marker-drawing example) are left in place as reference/scratch material rather than active logic.
 - `scsf_Olympus` and `scsf_OlympusOLD` duplicate almost all of their indicator calculation code — a good candidate for refactoring into shared helper functions if you continue maintaining both.
 
-## 🤝 Contributing
-
-If others can contribute, briefly note how (e.g., "Open an issue or submit a pull request"). Otherwise, delete this section.
-
-## 📜 License
-
-Specify a license if applicable (e.g., MIT, Apache 2.0), or note that this repo is for personal/reference use only.
 
 ---
 
