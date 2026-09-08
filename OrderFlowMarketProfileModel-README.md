@@ -8,6 +8,7 @@ The study draws levels, arrows, and labels, and fires alerts. **It places no ord
 
 > Nothing here is financial advice. Test on simulated data before risking money.
 
+https://www.youtube.com/watch?v=tvERE-Beu2U&t=87s
 ---
 
 ## Table of contents
