@@ -4,6 +4,8 @@ An ACSIL custom study that automates the "Little Rizzy" measured-move pattern: i
 
 Bollinger Bands are drawn alongside as a context gauge, and can optionally gate which setups the study will accept.
 
+https://www.youtube.com/watch?v=AVVM-FyewLg
+
 ---
 
 ## Table of contents
