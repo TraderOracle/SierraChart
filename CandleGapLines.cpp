@@ -1,7 +1,7 @@
 // ============================================================================
 //  CandleGapLines.cpp
 //
-//  Sierra Chart ACSIL study.                                  Version 1.5.0
+//  Sierra Chart ACSIL study.                                  Version 1.6.0
 //
 //  Draws a horizontal line extending to the right for every candle gap that
 //  occurs between two same-colored candles (two greens in a row where the
@@ -45,6 +45,9 @@
 //  1.5.0  Nearest unfilled line display: coloured up/down arrow plus text with
 //         direction, distance in ticks, target level and inverse-distance odds.
 //         Exposed as subgraphs 3, 4 and 5 for spreadsheets and alerts.
+//  1.6.0  Display moved to a fixed screen position set as a percentage of chart
+//         width and height, so it no longer drifts with price or scrolling.
+//         Dropped the redundant UP/DOWN word from the text; the arrow says it.
 //
 //  Build: place in <SierraChart>\ACS_Source and use
 //         Analysis >> Build Custom Studies DLL.
@@ -53,7 +56,7 @@
 #include "sierrachart.h"
 #include <vector>
 
-#define CGL_VERSION "1.5.0"
+#define CGL_VERSION "1.6.0"
 
 SCDLLName("Candle Gap Lines")
 
@@ -260,17 +263,17 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
         In_ShowDisplay.Name = "Show Nearest Line Direction Display";
         In_ShowDisplay.SetYesNo(1);
 
-        In_DisplayOffsetX.Name = "Display Position - Bars Right Of Last Bar";
-        In_DisplayOffsetX.SetInt(4);
-        In_DisplayOffsetX.SetIntLimits(0, 500);
+        In_DisplayOffsetX.Name = "Display Position - Horizontal (% Of Chart Width)";
+        In_DisplayOffsetX.SetInt(5);
+        In_DisplayOffsetX.SetIntLimits(0, 100);
 
-        In_DisplayOffsetY.Name = "Display Position - Ticks Above Last Price";
-        In_DisplayOffsetY.SetInt(40);
-        In_DisplayOffsetY.SetIntLimits(-100000, 100000);
+        In_DisplayOffsetY.Name = "Display Position - Vertical (% Of Chart Height)";
+        In_DisplayOffsetY.SetInt(85);
+        In_DisplayOffsetY.SetIntLimits(0, 100);
 
-        In_ArrowTextGap.Name = "Gap Between Arrow And Text (Ticks)";
-        In_ArrowTextGap.SetInt(10);
-        In_ArrowTextGap.SetIntLimits(0, 100000);
+        In_ArrowTextGap.Name = "Gap Between Arrow And Text (% Of Chart Height)";
+        In_ArrowTextGap.SetInt(7);
+        In_ArrowTextGap.SetIntLimits(0, 100);
 
         In_ArrowFontSize.Name = "Arrow Font Size";
         In_ArrowFontSize.SetInt(24);
@@ -894,9 +897,16 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
         const bool     GoingUp      = (NextDirection == 1);
         const uint32_t DisplayColor = GoingUp ? In_UpColor.GetColor() : In_DownColor.GetColor();
 
-        const float ArrowValue = CurrentPrice + In_DisplayOffsetY.GetInt() * TickSize;
-        const float TextValue  = ArrowValue - In_ArrowTextGap.GetInt() * TickSize;
-        const int   AnchorIndex = LastBarIndex + In_DisplayOffsetX.GetInt();
+        // Fixed screen position. With UseRelativeVerticalValues set, BeginValue
+        // is a percentage of the chart region height and BeginDateTime is a
+        // percentage of the chart width, so the display stays put regardless of
+        // scrolling, zooming or where price happens to be.
+        const int ArrowVertical = In_DisplayOffsetY.GetInt();
+        const int Horizontal    = In_DisplayOffsetX.GetInt();
+
+        int TextVertical = ArrowVertical - In_ArrowTextGap.GetInt();
+        if (TextVertical < 0)
+            TextVertical = 0;
 
         // UTF-8 for the black up/down pointing triangles, written as explicit
         // byte escapes so the source file encoding cannot affect it.
@@ -904,22 +914,22 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
 
         s_UseTool ArrowTool;
         ArrowTool.Clear();
-        ArrowTool.ChartNumber           = sc.ChartNumber;
-        ArrowTool.DrawingType           = DRAWING_TEXT;
-        ArrowTool.LineNumber            = DISPLAY_ARROW_LINENUMBER;
-        ArrowTool.BeginIndex            = AnchorIndex;
-        ArrowTool.BeginValue            = ArrowValue;
-        ArrowTool.Color                 = DisplayColor;
-        ArrowTool.FontSize              = In_ArrowFontSize.GetInt();
-        ArrowTool.FontBold              = 1;
-        ArrowTool.Text                  = ArrowGlyph;
-        ArrowTool.AddMethod             = UTAM_ADD_OR_ADJUST;
-        ArrowTool.AddAsUserDrawnDrawing = 0;
+        ArrowTool.ChartNumber               = sc.ChartNumber;
+        ArrowTool.DrawingType               = DRAWING_TEXT;
+        ArrowTool.LineNumber                = DISPLAY_ARROW_LINENUMBER;
+        ArrowTool.UseRelativeVerticalValues = 1;
+        ArrowTool.BeginDateTime             = Horizontal;
+        ArrowTool.BeginValue                = (float)ArrowVertical;
+        ArrowTool.Color                     = DisplayColor;
+        ArrowTool.FontSize                  = In_ArrowFontSize.GetInt();
+        ArrowTool.FontBold                  = 1;
+        ArrowTool.Text                      = ArrowGlyph;
+        ArrowTool.AddMethod                 = UTAM_ADD_OR_ADJUST;
+        ArrowTool.AddAsUserDrawnDrawing     = 0;
         sc.UseTool(ArrowTool);
 
         SCString DisplayText;
-        DisplayText.Format("%s  %d ticks to %s   |  up %d%%  dn %d%%",
-                           GoingUp ? "UP" : "DOWN",
+        DisplayText.Format("%d ticks to %s   |  up %d%%  dn %d%%",
                            NextDistTicks,
                            sc.FormatGraphValue(NextLevel, sc.GetValueFormat()).GetChars(),
                            (int)(UpProbability * 100.0f + 0.5f),
@@ -927,17 +937,18 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
 
         s_UseTool TextTool;
         TextTool.Clear();
-        TextTool.ChartNumber           = sc.ChartNumber;
-        TextTool.DrawingType           = DRAWING_TEXT;
-        TextTool.LineNumber            = DISPLAY_TEXT_LINENUMBER;
-        TextTool.BeginIndex            = AnchorIndex;
-        TextTool.BeginValue            = TextValue;
-        TextTool.Color                 = DisplayColor;
-        TextTool.FontSize              = In_TextFontSize.GetInt();
-        TextTool.FontBold              = 1;
-        TextTool.Text                  = DisplayText;
-        TextTool.AddMethod             = UTAM_ADD_OR_ADJUST;
-        TextTool.AddAsUserDrawnDrawing = 0;
+        TextTool.ChartNumber               = sc.ChartNumber;
+        TextTool.DrawingType               = DRAWING_TEXT;
+        TextTool.LineNumber                = DISPLAY_TEXT_LINENUMBER;
+        TextTool.UseRelativeVerticalValues = 1;
+        TextTool.BeginDateTime             = Horizontal;
+        TextTool.BeginValue                = (float)TextVertical;
+        TextTool.Color                     = DisplayColor;
+        TextTool.FontSize                  = In_TextFontSize.GetInt();
+        TextTool.FontBold                  = 1;
+        TextTool.Text                      = DisplayText;
+        TextTool.AddMethod                 = UTAM_ADD_OR_ADJUST;
+        TextTool.AddAsUserDrawnDrawing     = 0;
         sc.UseTool(TextTool);
     }
     else
