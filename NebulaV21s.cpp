@@ -18,6 +18,8 @@
 // ============================================================================
 
 #include "sierrachart.h"
+#include <stdio.h>
+#include <string.h>
 
 SCDLLName("Nebula v2.1s")
 
@@ -208,6 +210,39 @@ namespace NB
     { return A < B && PrevA >= PrevB; }
 }
 
+// Input indices shared between the study function and the GDI draw callback.
+// The callback receives sc, so it reads its settings straight from sc.Input[].
+enum NebulaExtraInputs
+{
+    GA_ENABLE   = 110,   // Waddah strength gauge
+    GA_CORNER   = 111,
+    GA_OFFX     = 112,
+    GA_OFFY     = 113,
+    GA_WIDTH    = 114,
+    GA_HEIGHT   = 115,
+    GA_NEUTRAL  = 116,
+    GA_TEXT     = 117,
+
+    BO_ENABLE   = 118,   // Back of the Nebula bounce
+    BO_SHORT    = 119,
+    BO_TRENDBAR = 120,
+    BO_TOLERANCE= 121,
+    BO_MAXPEN   = 122,
+    BO_WINDOW   = 123,
+    BO_MODE     = 124,
+    BO_COOLDOWN = 125,
+    BO_MARKERS  = 126
+};
+
+// Persistent slots used to hand the current Waddah reading to the gauge.
+enum NebulaPersist
+{
+    PF_TRENDUP = 1, PF_TRENDDOWN = 2, PF_EXPLOSION = 3, PF_TOPBODY = 4,
+    PI_GREEN   = 1, PI_RED       = 2
+};
+
+void NebulaWaddahGauge(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc);
+
 // ============================================================================
 SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
 {
@@ -238,6 +273,8 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     SCSubgraphRef SG_TrampDown  = sc.Subgraph[21];
     SCSubgraphRef SG_SqzBuy     = sc.Subgraph[22];
     SCSubgraphRef SG_SqzSell    = sc.Subgraph[23];
+    SCSubgraphRef SG_BounceUp   = sc.Subgraph[24];
+    SCSubgraphRef SG_BounceDown = sc.Subgraph[25];
 
     // ---------------- Hidden state / calculation arrays ----------------
     SCSubgraphRef H_TR      = sc.Subgraph[30];  // [0]=+DM [1]=-DM
@@ -294,6 +331,8 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     // The seventh component flag lives on its own subgraph rather than an
     // out-of-range Arrays[6], which was corrupting subgraph memory.
     SCSubgraphRef H_Flags2  = sc.Subgraph[78];  // [0]=Bands
+    SCSubgraphRef H_Bounce  = sc.Subgraph[79];  // [0]=long touch bar [1]=short touch bar
+                                                // [2]=last long signal [3]=last short signal
 
     // Diagnostics. Hidden by default; set a Draw Style in the study settings or
     // read them in the Values window to compare bar-by-bar against the Pine
@@ -421,6 +460,25 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
 
     SCInputRef In_AlphaLength = sc.Input[108];
     SCInputRef In_GammaLength = sc.Input[109];
+
+    SCInputRef In_GaugeOn     = sc.Input[GA_ENABLE];
+    SCInputRef In_GaugeCorner = sc.Input[GA_CORNER];
+    SCInputRef In_GaugeOffX   = sc.Input[GA_OFFX];
+    SCInputRef In_GaugeOffY   = sc.Input[GA_OFFY];
+    SCInputRef In_GaugeW      = sc.Input[GA_WIDTH];
+    SCInputRef In_GaugeH      = sc.Input[GA_HEIGHT];
+    SCInputRef In_GaugeNeutral= sc.Input[GA_NEUTRAL];
+    SCInputRef In_GaugeText   = sc.Input[GA_TEXT];
+
+    SCInputRef In_BounceOn    = sc.Input[BO_ENABLE];
+    SCInputRef In_BounceShort = sc.Input[BO_SHORT];
+    SCInputRef In_BounceTrend = sc.Input[BO_TRENDBAR];
+    SCInputRef In_BounceTol   = sc.Input[BO_TOLERANCE];
+    SCInputRef In_BounceMaxPen= sc.Input[BO_MAXPEN];
+    SCInputRef In_BounceWin   = sc.Input[BO_WINDOW];
+    SCInputRef In_BounceMode  = sc.Input[BO_MODE];
+    SCInputRef In_BounceCool  = sc.Input[BO_COOLDOWN];
+    SCInputRef In_BounceMark  = sc.Input[BO_MARKERS];
 
     const int CLOUD_LINE_BASE = 1000000;
     const int IMB_LINE_BASE   = 3000000;
@@ -551,7 +609,17 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         SG_SqzSell.PrimaryColor = MakeCol(255,230,0);
         SG_SqzSell.LineWidth = 3;  SG_SqzSell.DrawZeros = 0;
 
-        for (int k = 30; k <= 78; ++k)
+        SG_BounceUp.Name         = "Back of Cloud Bounce (Long)";
+        SG_BounceUp.DrawStyle    = DRAWSTYLE_ARROW_UP;
+        SG_BounceUp.PrimaryColor = MakeCol(0,255,180);
+        SG_BounceUp.LineWidth    = 4;  SG_BounceUp.DrawZeros = 0;
+
+        SG_BounceDown.Name         = "Back of Cloud Bounce (Short)";
+        SG_BounceDown.DrawStyle    = DRAWSTYLE_ARROW_DOWN;
+        SG_BounceDown.PrimaryColor = MakeCol(255,120,180);
+        SG_BounceDown.LineWidth    = 4;  SG_BounceDown.DrawZeros = 0;
+
+        for (int k = 30; k <= 79; ++k)
         {
             sc.Subgraph[k].Name      = "";
             sc.Subgraph[k].DrawStyle = DRAWSTYLE_IGNORE;
@@ -704,12 +772,51 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         In_AlphaLength.Name = "HEMA Alpha Length"; In_AlphaLength.SetInt(20);
         In_GammaLength.Name = "HEMA Gamma Length"; In_GammaLength.SetInt(20);
 
+        // --- Back of the Nebula Bounce ---
+        In_BounceOn.Name = "Bounce: Enable Back of Cloud alert"; In_BounceOn.SetYesNo(1);
+        In_BounceShort.Name = "Bounce: Also detect the short side"; In_BounceShort.SetYesNo(1);
+        In_BounceTrend.Name = "Bounce: Trend confirmation bars";
+        In_BounceTrend.SetInt(5);
+        In_BounceTrend.SetIntLimits(1, 200);
+        In_BounceTol.Name = "Bounce: Touch tolerance (ticks)";
+        In_BounceTol.SetInt(2);
+        In_BounceTol.SetIntLimits(0, 500);
+        In_BounceMaxPen.Name = "Bounce: Max penetration past back edge (ticks)";
+        In_BounceMaxPen.SetInt(8);
+        In_BounceMaxPen.SetIntLimits(0, 1000);
+        In_BounceWin.Name = "Bounce: Confirmation window (bars)";
+        In_BounceWin.SetInt(5);
+        In_BounceWin.SetIntLimits(1, 200);
+        In_BounceMode.Name = "Bounce: Confirmation";
+        In_BounceMode.SetCustomInputStrings("Close past front edge;Close past touch bar extreme;Close back inside cloud");
+        In_BounceMode.SetCustomInputIndex(0);
+        In_BounceCool.Name = "Bounce: Minimum bars between alerts";
+        In_BounceCool.SetInt(10);
+        In_BounceCool.SetIntLimits(0, 500);
+        In_BounceMark.Name = "Bounce: Show markers"; In_BounceMark.SetYesNo(1);
+
+        // --- Waddah strength gauge (fixed screen position, GDI drawn) ---
+        In_GaugeOn.Name = "Gauge: Show Waddah strength gauge"; In_GaugeOn.SetYesNo(1);
+        In_GaugeCorner.Name = "Gauge: Corner";
+        In_GaugeCorner.SetCustomInputStrings("Top Left;Top Right;Bottom Left;Bottom Right");
+        In_GaugeCorner.SetCustomInputIndex(1);
+        In_GaugeOffX.Name = "Gauge: X offset (pixels)"; In_GaugeOffX.SetInt(70);
+        In_GaugeOffY.Name = "Gauge: Y offset (pixels)"; In_GaugeOffY.SetInt(30);
+        In_GaugeW.Name    = "Gauge: Width (pixels)";    In_GaugeW.SetInt(26);
+        In_GaugeH.Name    = "Gauge: Height (pixels)";   In_GaugeH.SetInt(180);
+        In_GaugeNeutral.Name = "Gauge: Neutral (grey) zone %";
+        In_GaugeNeutral.SetInt(24);
+        In_GaugeNeutral.SetIntLimits(4, 60);
+        In_GaugeText.Name = "Gauge: Show numeric readout"; In_GaugeText.SetYesNo(1);
+
         return;
     }
 
     // ========================================================================
     //  Housekeeping
     // ========================================================================
+    sc.p_GDIFunction = NebulaWaddahGauge;
+
     if (sc.UpdateStartIndex == 0)
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_ALL, 0);
 
@@ -1044,6 +1151,87 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
             Tool.AddAsUserDrawnDrawing = 0;
             sc.UseTool(Tool);
         }
+    }
+
+    // ------------------------------------------------------------------
+    //  "Back of the Nebula Bounce"
+    //  In an established trend, price pulls back all the way to the FAR edge
+    //  of the cloud (the back), holds there, then resumes with the trend.
+    //  Long version: cloud green, low reaches the lower cloud edge without
+    //  closing far through it, then price recovers within the window.
+    // ------------------------------------------------------------------
+    bool BounceLong = false, BounceShort = false;
+    {
+        const float CloudTop = max(FanVma, McG);
+        const float CloudBot = min(FanVma, McG);
+
+        int TouchL   = (int)H_Bounce.Arrays[0][i-1];
+        int TouchS   = (int)H_Bounce.Arrays[1][i-1];
+        int LastSigL = (int)H_Bounce.Arrays[2][i-1];
+        int LastSigS = (int)H_Bounce.Arrays[3][i-1];
+
+        if (In_BounceOn.GetYesNo())
+        {
+            const float Tol    = (float)In_BounceTol.GetInt()    * sc.TickSize;
+            const float MaxPen = (float)In_BounceMaxPen.GetInt() * sc.TickSize;
+            const int   Win    = max(1, In_BounceWin.GetInt());
+            const int   TrendN = max(1, In_BounceTrend.GetInt());
+            const int   Mode   = In_BounceMode.GetIndex();
+            const int   Cool   = max(0, In_BounceCool.GetInt());
+
+            // Trend must have held for TrendN bars, not just this one.
+            bool TrendGreen = true, TrendRed = true;
+            for (int b = i; b > i - TrendN && b >= 1; --b)
+            {
+                if (!(H_FanVma[b] > H_McG[b])) TrendGreen = false;
+                if (!(H_FanVma[b] < H_McG[b])) TrendRed   = false;
+            }
+
+            // Expire or invalidate an outstanding touch
+            if (TouchL != 0 && (!CloudGreen || (i - TouchL) > Win || C < CloudBot - MaxPen))
+                TouchL = 0;
+            if (TouchS != 0 && ( CloudGreen || (i - TouchS) > Win || C > CloudTop + MaxPen))
+                TouchS = 0;
+
+            // Confirmation. Checked before a new touch is recorded, so the
+            // resumption always lands on a later bar than the pullback.
+            if (TouchL != 0 && i > TouchL && BarConfirmed)
+            {
+                bool Ok = false;
+                if      (Mode == 0) Ok = C > CloudTop;
+                else if (Mode == 1) Ok = C > sc.High[TouchL];
+                else                Ok = (C > O) && (C > CloudBot);
+
+                if (Ok && (Cool == 0 || LastSigL == 0 || (i - LastSigL) >= Cool))
+                { BounceLong = true; LastSigL = i; }
+                if (Ok) TouchL = 0;
+            }
+            if (In_BounceShort.GetYesNo() && TouchS != 0 && i > TouchS && BarConfirmed)
+            {
+                bool Ok = false;
+                if      (Mode == 0) Ok = C < CloudBot;
+                else if (Mode == 1) Ok = C < sc.Low[TouchS];
+                else                Ok = (C < O) && (C < CloudTop);
+
+                if (Ok && (Cool == 0 || LastSigS == 0 || (i - LastSigS) >= Cool))
+                { BounceShort = true; LastSigS = i; }
+                if (Ok) TouchS = 0;
+            }
+
+            // New touch of the back edge
+            if (TrendGreen && BarConfirmed
+                && L <= CloudBot + Tol && L >= CloudBot - MaxPen)
+                TouchL = i;
+            if (In_BounceShort.GetYesNo() && TrendRed && BarConfirmed
+                && H >= CloudTop - Tol && H <= CloudTop + MaxPen)
+                TouchS = i;
+        }
+        else { TouchL = 0; TouchS = 0; }
+
+        H_Bounce.Arrays[0][i] = (float)TouchL;
+        H_Bounce.Arrays[1][i] = (float)TouchS;
+        H_Bounce.Arrays[2][i] = (float)LastSigL;
+        H_Bounce.Arrays[3][i] = (float)LastSigS;
     }
 
     // ------------------------------------------------------------------
@@ -1775,6 +1963,20 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     D_Shark[i]   = H_Flags.Arrays[5][i];
     D_Bands[i]   = H_Flags2.Arrays[0][i];
 
+    SG_BounceUp[i]   = (In_BounceMark.GetYesNo() && BounceLong)  ? (L - Off*8.0f) : 0.0f;
+    SG_BounceDown[i] = (In_BounceMark.GetYesNo() && BounceShort) ? (H + Off*8.0f) : 0.0f;
+
+    // Hand the current Waddah reading to the fixed-position gauge
+    if (i == sc.ArraySize - 1)
+    {
+        sc.GetPersistentFloat(PF_TRENDUP)    = TrendUpWae;
+        sc.GetPersistentFloat(PF_TRENDDOWN)  = TrendDownWae;
+        sc.GetPersistentFloat(PF_EXPLOSION)  = E1;
+        sc.GetPersistentFloat(PF_TOPBODY)    = (float)In_TopBody.GetInt();
+        sc.GetPersistentInt(PI_GREEN)        = (int)BigGreen;
+        sc.GetPersistentInt(PI_RED)          = (int)BigRed;
+    }
+
     // ------------------------------------------------------------------
     //  Alerts
     // ------------------------------------------------------------------
@@ -1792,5 +1994,162 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         if (TpCount >= In_MaxProfit.GetInt()) sc.SetAlert(7, "Nebula: Take Partial Profit");
         if (TpCount >= In_Profit.GetInt())    sc.SetAlert(8, "Nebula: Take FULL Profit");
         if (CrossUp || CrossDn)               sc.SetAlert(9, "Nebula: 9/21 EMA Cross");
+        if (BounceLong)  sc.SetAlert(10, "Nebula: Back of Cloud Bounce (Long)");
+        if (BounceShort) sc.SetAlert(11, "Nebula: Back of Cloud Bounce (Short)");
     }
+}
+
+// ============================================================================
+//  Fixed-position Waddah strength gauge
+//
+//  Drawn in screen pixels via the GDI callback, so it stays put when the chart
+//  is scrolled or zoomed. Layout, from top to bottom:
+//
+//      green zone   - how far bullish Waddah momentum exceeds the explosion
+//                     line, filling upward from the middle
+//      grey  zone   - momentum below the explosion line, brightening as it
+//                     approaches the threshold
+//      red   zone   - bearish momentum past the explosion line, filling
+//                     downward from the middle
+//
+//  The two thin lines bounding the grey band are the explosion line itself.
+// ============================================================================
+void NebulaWaddahGauge(HWND WindowHandle, HDC DeviceContext, SCStudyInterfaceRef sc)
+{
+    using namespace NB;
+
+    if (sc.Input[GA_ENABLE].GetYesNo() == 0)
+        return;
+
+    const float TrendUp   = sc.GetPersistentFloat(PF_TRENDUP);
+    const float TrendDown = sc.GetPersistentFloat(PF_TRENDDOWN);
+    const float Explosion = sc.GetPersistentFloat(PF_EXPLOSION);
+    const float TopBody   = sc.GetPersistentFloat(PF_TOPBODY);
+    const COLORREF ColGreen = (COLORREF)sc.GetPersistentInt(PI_GREEN);
+    const COLORREF ColRed   = (COLORREF)sc.GetPersistentInt(PI_RED);
+
+    const int RgnLeft   = sc.StudyRegionLeftCoordinate;
+    const int RgnRight  = sc.StudyRegionRightCoordinate;
+    const int RgnTop    = sc.StudyRegionTopCoordinate;
+    const int RgnBottom = sc.StudyRegionBottomCoordinate;
+
+    int GW = sc.Input[GA_WIDTH].GetInt();
+    int GH = sc.Input[GA_HEIGHT].GetInt();
+    if (GW < 8)  GW = 8;
+    if (GH < 40) GH = 40;
+
+    const int OffX = sc.Input[GA_OFFX].GetInt();
+    const int OffY = sc.Input[GA_OFFY].GetInt();
+
+    int X0 = RgnLeft + OffX;
+    int Y0 = RgnTop  + OffY;
+    switch (sc.Input[GA_CORNER].GetIndex())
+    {
+        case 1: X0 = RgnRight - OffX - GW; Y0 = RgnTop    + OffY;      break;
+        case 2: X0 = RgnLeft  + OffX;      Y0 = RgnBottom - OffY - GH; break;
+        case 3: X0 = RgnRight - OffX - GW; Y0 = RgnBottom - OffY - GH; break;
+        default: break;
+    }
+
+    int NeutralPct = sc.Input[GA_NEUTRAL].GetInt();
+    if (NeutralPct < 4)  NeutralPct = 4;
+    if (NeutralPct > 60) NeutralPct = 60;
+
+    const int NeutralH = (GH * NeutralPct) / 100;
+    const int MidTop   = Y0 + (GH - NeutralH) / 2;
+    const int MidBot   = MidTop + NeutralH;
+    const int TopZoneH = MidTop - Y0;
+    const int BotZoneH = (Y0 + GH) - MidBot;
+
+    RECT R;
+    HBRUSH Brush;
+
+    // Backdrop
+    R.left = X0; R.top = Y0; R.right = X0 + GW; R.bottom = Y0 + GH;
+    Brush = CreateSolidBrush(MakeCol(16, 16, 16));
+    FillRect(DeviceContext, &R, Brush);
+    DeleteObject(Brush);
+
+    // Grey neutral band - brightens as momentum approaches the explosion line
+    const float Strength = (TrendUp > 0.0f) ? TrendUp : TrendDown;
+    float NeutralT = (Explosion > 0.0f) ? (Strength / Explosion) : 0.0f;
+    if (NeutralT > 1.0f) NeutralT = 1.0f;
+    if (NeutralT < 0.0f) NeutralT = 0.0f;
+
+    R.left = X0 + 1; R.right = X0 + GW - 1; R.top = MidTop; R.bottom = MidBot;
+    Brush = CreateSolidBrush(Blend(MakeCol(52,52,52), MakeCol(185,185,185), NeutralT));
+    FillRect(DeviceContext, &R, Brush);
+    DeleteObject(Brush);
+
+    // Green zone - bullish momentum past the explosion line
+    if (TrendUp > Explosion && TrendUp > 0.0f && TopZoneH > 0)
+    {
+        float T = (TopBody > 0.0f) ? ((TrendUp - Explosion) / TopBody) : 0.0f;
+        if (T > 1.0f) T = 1.0f;
+        if (T < 0.0f) T = 0.0f;
+        const int BarH = (int)(T * (float)TopZoneH + 0.5f);
+        if (BarH > 0)
+        {
+            R.left = X0 + 1; R.right = X0 + GW - 1;
+            R.bottom = MidTop; R.top = MidTop - BarH;
+            Brush = CreateSolidBrush(Blend(MakeCol(16,64,24), ColGreen, 0.30f + 0.70f * T));
+            FillRect(DeviceContext, &R, Brush);
+            DeleteObject(Brush);
+        }
+    }
+
+    // Red zone - bearish momentum past the explosion line
+    if (TrendDown > Explosion && TrendDown > 0.0f && BotZoneH > 0)
+    {
+        float T = (TopBody > 0.0f) ? ((TrendDown - Explosion) / TopBody) : 0.0f;
+        if (T > 1.0f) T = 1.0f;
+        if (T < 0.0f) T = 0.0f;
+        const int BarH = (int)(T * (float)BotZoneH + 0.5f);
+        if (BarH > 0)
+        {
+            R.left = X0 + 1; R.right = X0 + GW - 1;
+            R.top = MidBot; R.bottom = MidBot + BarH;
+            Brush = CreateSolidBrush(Blend(MakeCol(72,16,16), ColRed, 0.30f + 0.70f * T));
+            FillRect(DeviceContext, &R, Brush);
+            DeleteObject(Brush);
+        }
+    }
+
+    // Explosion-line markers
+    Brush = CreateSolidBrush(MakeCol(150, 150, 150));
+    R.left = X0; R.right = X0 + GW; R.top = MidTop - 1; R.bottom = MidTop;
+    FillRect(DeviceContext, &R, Brush);
+    R.top = MidBot; R.bottom = MidBot + 1;
+    FillRect(DeviceContext, &R, Brush);
+    DeleteObject(Brush);
+
+    // Outline
+    R.left = X0; R.top = Y0; R.right = X0 + GW; R.bottom = Y0 + GH;
+    Brush = CreateSolidBrush(MakeCol(96, 96, 96));
+    FrameRect(DeviceContext, &R, Brush);
+    DeleteObject(Brush);
+
+    if (sc.Input[GA_TEXT].GetYesNo() == 0)
+        return;
+
+    const int PrevBkMode = SetBkMode(DeviceContext, TRANSPARENT);
+    char Buffer[64];
+
+    SetTextColor(DeviceContext, MakeCol(205, 205, 205));
+    TextOutA(DeviceContext, X0, Y0 - 16, "WAE", 3);
+
+    COLORREF ValueColor = MakeCol(185, 185, 185);
+    if (TrendUp   > Explosion && TrendUp   > 0.0f) ValueColor = ColGreen;
+    if (TrendDown > Explosion && TrendDown > 0.0f) ValueColor = ColRed;
+
+    const float Signed = (TrendUp > 0.0f) ? TrendUp : -TrendDown;
+    SetTextColor(DeviceContext, ValueColor);
+    snprintf(Buffer, sizeof(Buffer), "%+.0f", Signed);
+    TextOutA(DeviceContext, X0, Y0 + GH + 3, Buffer, (int)strlen(Buffer));
+
+    SetTextColor(DeviceContext, MakeCol(140, 140, 140));
+    snprintf(Buffer, sizeof(Buffer), "E %.0f", Explosion);
+    TextOutA(DeviceContext, X0, Y0 + GH + 17, Buffer, (int)strlen(Buffer));
+
+    SetBkMode(DeviceContext, PrevBkMode);
 }
