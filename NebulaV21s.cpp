@@ -284,12 +284,29 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     SCSubgraphRef H_Vodka   = sc.Subgraph[69];  // [0]=upwards [1]=downwards
     SCSubgraphRef H_Tramp   = sc.Subgraph[70];  // [0]=weGoUp [1]=weGoDown
     SCSubgraphRef H_Flags   = sc.Subgraph[71];  // [0]=DSR [1]=Lux [2]=Tramp [3]=Sqz
-                                                // [4]=Recall [5]=Shark [6]=Bands
     SCSubgraphRef H_Mfi     = sc.Subgraph[72];  // [0]=posMF [1]=negMF
     SCSubgraphRef H_Cci     = sc.Subgraph[73];
     SCSubgraphRef H_Hlc3    = sc.Subgraph[74];
     SCSubgraphRef H_Imb     = sc.Subgraph[75];  // [0]=level [1]=breakBar [2]=isUp
     SCSubgraphRef H_Tmp     = sc.Subgraph[76];
+    SCSubgraphRef H_VolAvgL = sc.Subgraph[77];
+    // Only six extra arrays per subgraph are safe to assume (Arrays[0]..[5]).
+    // The seventh component flag lives on its own subgraph rather than an
+    // out-of-range Arrays[6], which was corrupting subgraph memory.
+    SCSubgraphRef H_Flags2  = sc.Subgraph[78];  // [0]=Bands
+
+    // Diagnostics. Hidden by default; set a Draw Style in the study settings or
+    // read them in the Values window to compare bar-by-bar against the Pine
+    // original. D_TpCount is Pine's iTPSignalCount; the rest are the per-bar
+    // component flags that feed it.
+    SCSubgraphRef D_TpCount = sc.Subgraph[90];
+    SCSubgraphRef D_Dsr     = sc.Subgraph[91];
+    SCSubgraphRef D_Lux     = sc.Subgraph[92];
+    SCSubgraphRef D_Tramp   = sc.Subgraph[93];
+    SCSubgraphRef D_Sqz     = sc.Subgraph[94];
+    SCSubgraphRef D_Recall  = sc.Subgraph[95];
+    SCSubgraphRef D_Shark   = sc.Subgraph[96];
+    SCSubgraphRef D_Bands   = sc.Subgraph[97];
 
     // ---------------- Inputs ----------------
     SCInputRef In_CloudType   = sc.Input[0];
@@ -534,11 +551,22 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         SG_SqzSell.PrimaryColor = MakeCol(255,230,0);
         SG_SqzSell.LineWidth = 3;  SG_SqzSell.DrawZeros = 0;
 
-        for (int k = 30; k <= 76; ++k)
+        for (int k = 30; k <= 78; ++k)
         {
             sc.Subgraph[k].Name      = "";
             sc.Subgraph[k].DrawStyle = DRAWSTYLE_IGNORE;
         }
+
+        D_TpCount.Name = "DIAG: TP Signal Count";
+        D_Dsr.Name     = "DIAG: Dead Simple Reversal (+2)";
+        D_Lux.Name     = "DIAG: LuxAlgo Reversal (+3)";
+        D_Tramp.Name   = "DIAG: Trampoline (+4)";
+        D_Sqz.Name     = "DIAG: Squeeze (+4)";
+        D_Recall.Name  = "DIAG: Total Recall (+2)";
+        D_Shark.Name   = "DIAG: Shark (+2)";
+        D_Bands.Name   = "DIAG: John Wick Bands (+2)";
+        for (int k = 90; k <= 97; ++k)
+            sc.Subgraph[k].DrawStyle = DRAWSTYLE_IGNORE;
 
         In_CloudType.Name = "Cloud Type";
         In_CloudType.SetCustomInputStrings("None;Simple;Relative Strength;Money Flow;Commodity Channel");
@@ -935,14 +963,10 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
 
     // RSI(close,14) is shared with the Trampoline / Shark sections
     {
-        const int RLen = 14;
         const float Ch = C - PrevC;
-        H_Tmp[i] = 0.0f;
         H_Rsi14.Arrays[0][i] = max(Ch, 0.0f);
         H_Rsi14.Arrays[1][i] = -min(Ch, 0.0f);
     }
-    // NOTE: RMA needs its own output arrays; reuse H_Rsi14 data slot for value.
-    static const int RSI14_LEN = 14;
     RmaStep(H_Rsi14.Arrays[0], H_Rsi14.Arrays[2], i, max(1, In_TrampRsiLen.GetInt()));
     RmaStep(H_Rsi14.Arrays[1], H_Rsi14.Arrays[3], i, max(1, In_TrampRsiLen.GetInt()));
     H_Rsi14[i] = RsiFrom(H_Rsi14.Arrays[2][i], H_Rsi14.Arrays[3][i]);
@@ -1252,9 +1276,9 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         const float WDev  = In_WickBBMult.GetFloat() * StdevPop(sc.Close, i, WLen);
         const bool  BBUp   = (L <= (WBase - WDev)) && (C >= (WBase - WDev)) && IsRedBar;
         const bool  BBDown = (H >= (WBase + WDev)) && (C <  (WBase + WDev)) && IsGreenBar;
-        H_Flags.Arrays[6][i] = (BBUp || BBDown) ? 1.0f : 0.0f;
+        H_Flags2.Arrays[0][i] = (BBUp || BBDown) ? 1.0f : 0.0f;
     }
-    if (H_Flags.Arrays[6][i] != 0.0f || H_Flags.Arrays[6][i-1] != 0.0f) TpCount += 2;
+    if (H_Flags2.Arrays[0][i] != 0.0f || H_Flags2.Arrays[0][i-1] != 0.0f) TpCount += 2;
 
     // ------------------------------------------------------------------
     //  Ultimate Buy / Sell
@@ -1396,9 +1420,12 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     bool BuyVodka = false, SellVodka = false;
     {
         const float NzVol  = sc.Volume[i];
-        const float VolAvgL= SMA(sc.Volume, i, 70);
+        H_VolAvgL[i] = SMA(sc.Volume, i, 70);
+        const float VolAvgL= H_VolAvgL[i];
+        // Pine takes ta.stdev of volAvgL (the smoothed series), NOT of raw
+        // volume. Using raw volume here inflates volDev and suppresses signals.
         const float VolDev = (VolAvgL == 0.0f) ? 0.0f
-                           : (VolAvgL + 1.618034f * StdevPop(sc.Volume, i, 70)) / VolAvgL * 11.0f / 100.0f;
+                           : (VolAvgL + 1.618034f * StdevPop(H_VolAvgL, i, 70)) / VolAvgL * 11.0f / 100.0f;
         const float VolRel = (VolAvgL == 0.0f) ? 0.0f : NzVol / VolAvgL;
 
         // vola
@@ -1412,7 +1439,7 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
             Vola = (Hi == Lo) ? 0.0f : (NzVol - Lo) / (Hi - Lo);
         }
         else if (VCalc == 1) Vola = NzVol;
-        H_Tmp[i] = Vola;
+        H_Vola.Arrays[2][i] = Vola;
 
         const float R2 = (Highest(sc.High, i, 2) - Lowest(sc.Low, i, 2)) * 0.5f;
         float Cval;
@@ -1432,19 +1459,19 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         const int DerMa = In_DerMaType.GetIndex();   // 0 WMA, 1 EMA, 2 SMA
         if (DerMa == 1)
         {
-            EmaStep(H_Tmp,            H_AvgVola, i, VLen);
+            EmaStep(H_Vola.Arrays[2],  H_AvgVola, i, VLen);
             EmaStep(H_Vola.Arrays[0], H_Dem,     i, VLen);
             EmaStep(H_Vola.Arrays[1], H_Sup,     i, VLen);
         }
         else if (DerMa == 2)
         {
-            H_AvgVola[i] = SMA(H_Tmp,            i, VLen);
+            H_AvgVola[i] = SMA(H_Vola.Arrays[2],  i, VLen);
             H_Dem[i]     = SMA(H_Vola.Arrays[0], i, VLen);
             H_Sup[i]     = SMA(H_Vola.Arrays[1], i, VLen);
         }
         else
         {
-            H_AvgVola[i] = WMA(H_Tmp,            i, VLen);
+            H_AvgVola[i] = WMA(H_Vola.Arrays[2],  i, VLen);
             H_Dem[i]     = WMA(H_Vola.Arrays[0], i, VLen);
             H_Sup[i]     = WMA(H_Vola.Arrays[1], i, VLen);
         }
@@ -1684,33 +1711,32 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
     SG_StrongBuy[i]  = ( BigBuy  && BuyChar)  ? (L - Off) : 0.0f;
     SG_StrongSell[i] = ( BigSell && SellChar) ? (H + Off) : 0.0f;
 
-    if (In_ShowPlus.GetYesNo())
-    {
-        SG_PlusUp[i]   = (GapGreen && PrevWave == WAVE_UP)   ? (L - Off*2.0f) : 0.0f;
-        SG_PlusDown[i] = (GapRed   && PrevWave == WAVE_DOWN) ? (H + Off*2.0f) : 0.0f;
-    }
-    if (In_ShowBigPlus.GetYesNo())
-    {
-        SG_VodkaUp[i]   = (BuyVodka  && PrevWave == WAVE_UP)   ? (L - Off*3.0f) : 0.0f;
-        SG_VodkaDown[i] = (SellVodka && PrevWave == WAVE_DOWN) ? (H + Off*3.0f) : 0.0f;
-    }
+    SG_PlusUp[i]    = (In_ShowPlus.GetYesNo()    && GapGreen  && PrevWave == WAVE_UP)   ? (L - Off*2.0f) : 0.0f;
+    SG_PlusDown[i]  = (In_ShowPlus.GetYesNo()    && GapRed    && PrevWave == WAVE_DOWN) ? (H + Off*2.0f) : 0.0f;
+    SG_VodkaUp[i]   = (In_ShowBigPlus.GetYesNo() && BuyVodka  && PrevWave == WAVE_UP)   ? (L - Off*3.0f) : 0.0f;
+    SG_VodkaDown[i] = (In_ShowBigPlus.GetYesNo() && SellVodka && PrevWave == WAVE_DOWN) ? (H + Off*3.0f) : 0.0f;
 
     // NOTE: in the original the plot titles are swapped relative to the input
     // names - iMaxProfit drives the plot titled "Take Partial Profit" and
     // iProfit drives "Take Full Profit". The behaviour is preserved as written.
+    // Both subgraphs are written every bar; leaving them unassigned let a
+    // marker set on an earlier pass survive into a bar that no longer qualifies.
+    float TpAllVal = 0.0f, TpPartialVal = 0.0f;
     if (In_ShowProfit.GetYesNo())
     {
         if (TpCount >= In_MaxProfit.GetInt())
         {
-            if (WaveState == WAVE_UP)        SG_TpAll[i] = H + Off*4.0f;
-            else if (WaveState == WAVE_DOWN) SG_TpAll[i] = L - Off*4.0f;
+            if (WaveState == WAVE_UP)        TpAllVal = H + Off*4.0f;
+            else if (WaveState == WAVE_DOWN) TpAllVal = L - Off*4.0f;
         }
         if (TpCount >= In_Profit.GetInt())
         {
-            if (WaveState == WAVE_UP)        SG_TpPartial[i] = H + Off*5.0f;
-            else if (WaveState == WAVE_DOWN) SG_TpPartial[i] = L - Off*5.0f;
+            if (WaveState == WAVE_UP)        TpPartialVal = H + Off*5.0f;
+            else if (WaveState == WAVE_DOWN) TpPartialVal = L - Off*5.0f;
         }
     }
+    SG_TpAll[i]     = TpAllVal;
+    SG_TpPartial[i] = TpPartialVal;
 
     SG_CrossUp[i]   = CrossUp ? (L - Off) : 0.0f;
     SG_CrossDown[i] = CrossDn ? (H + Off) : 0.0f;
@@ -1738,6 +1764,16 @@ SCSFExport scsf_NebulaV21s(SCStudyInterfaceRef sc)
         SG_SqzBuy[i]  = SqzBuy  ? (L - Off*7.0f) : 0.0f;
         SG_SqzSell[i] = SqzSell ? (H + Off*7.0f) : 0.0f;
     }
+
+    // Diagnostics - always populated so they can be inspected without a rebuild
+    D_TpCount[i] = (float)TpCount;
+    D_Dsr[i]     = H_Flags.Arrays[0][i];
+    D_Lux[i]     = H_Flags.Arrays[1][i];
+    D_Tramp[i]   = H_Flags.Arrays[2][i];
+    D_Sqz[i]     = H_Flags.Arrays[3][i];
+    D_Recall[i]  = H_Flags.Arrays[4][i];
+    D_Shark[i]   = H_Flags.Arrays[5][i];
+    D_Bands[i]   = H_Flags2.Arrays[0][i];
 
     // ------------------------------------------------------------------
     //  Alerts
