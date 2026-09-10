@@ -981,10 +981,10 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         // VolImb need to be BEFORE the current bar check, or they don't re-draw after an INS key update
         if (IsVolImbGreen(sc, sc.CurrentIndex))
-            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
 
         if (IsVolImbRed(sc, sc.CurrentIndex))
-            sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
+            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
 
         if (!bIsCurrentBar)
             return;
@@ -994,7 +994,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
 
         // CHECK FOR VOLIMB FINISHES
-        if (bBarClosed) {
+        if (false && bBarClosed) {
             //sc.AddMessageToLog(txt.Format("Checking NumLines status"), 1);
             auto iUpDown { 0 };
             auto LineIDForBar{ 0 };
