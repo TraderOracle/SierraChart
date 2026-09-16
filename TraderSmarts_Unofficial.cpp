@@ -215,31 +215,49 @@ static SCString ReadTextFile(SCStudyInterfaceRef sc, const SCString &FileLocatio
     return SCString(Contents.c_str());
 }
 
+// Split a line into whitespace-separated tokens.
+static std::vector<SCString> TokenizeWhitespace(const SCString &Line) {
+    std::vector<SCString> Tokens;
+    std::istringstream Stream(Line.GetChars());
+    std::string Token;
+
+    while (Stream >> Token)
+        Tokens.push_back(SCString(Token.c_str()));
+
+    return Tokens;
+}
+
 SCSFExport scsf_TraderSmarts(SCStudyInterfaceRef sc) {
 
-#pragma region LOCALS
-    int i = sc.Index;
-    float &fStart = sc.GetPersistentFloat(0);
-    float &fEnd = sc.GetPersistentFloat(1);
-    SCString &desc = sc.GetPersistentSCString(2);
-    SCString txt = "";
+#pragma region DEFAULTS
+
     SCSubgraphRef Subgraph_Storage = sc.Subgraph[0];
     SCInputRef Input_Version = sc.Input[0];
     SCInputRef Input_LicenseKey = sc.Input[1];
     SCInputRef Input_APIKey = sc.Input[2];
     SCInputRef Input_Directory = sc.Input[3];
-    const int REQUEST_IDLE = 0;
-    const int REQUEST_SENT = 1;
+    SCInputRef Input_PollSeconds = sc.Input[4];
 
     if (sc.SetDefaults) {
         sc.GraphName = "TraderSmarts Unofficial";
         sc.GraphRegion = 0;
-        sc.AutoLoop = 1;
+
+        // Manual looping. This study does not compute per-bar values, it only
+        // draws chart drawings, so there is no reason to run it once per bar.
+        sc.AutoLoop = 0;
+
+        // Needed so the study is called on a timer even when no new ticks
+        // arrive, otherwise the text file would never be re-checked on a
+        // quiet market. The time gate below keeps the cost near zero.
+        sc.UpdateAlways = 1;
+
+        sc.DrawZeros = 0;
+
         Subgraph_Storage.Name = "Storage";
         Subgraph_Storage.DrawStyle = DRAWSTYLE_IGNORE;
 
         Input_Version.Name = "Version";
-        Input_Version.SetFloat(2.4);
+        Input_Version.SetFloat(2.5f);
 
         Input_LicenseKey.Name = "License Key";
         Input_LicenseKey.SetString("");
@@ -250,337 +268,222 @@ SCSFExport scsf_TraderSmarts(SCStudyInterfaceRef sc) {
         Input_Directory.Name = "Text file directory";
         Input_Directory.SetString("c:\\SierraChart\\data");
 
+        Input_PollSeconds.Name = "File re-check interval (seconds)";
+        Input_PollSeconds.SetInt(15);
+        Input_PollSeconds.SetIntLimits(1, 3600);
+
         return;
     }
 
-    const int ALERT_TRADERSMARTS = 26;
-    const int ALERT_TRADERSMARTS_WICK = 27;
-    int &RecordCount = sc.GetPersistentInt(3);
-    auto &bFullyDrawn = sc.GetPersistentInt(4);
-    SCString &prevTime = sc.GetPersistentSCString(5);
-    SCString Cleaned;
-    SCString w;
+#pragma endregion
 
-    // Persistent state
-    int &RequestState = sc.GetPersistentInt(5);
-    int &LastRequestedIndex = sc.GetPersistentInt(6); // last bar index we made a request for
+#pragma region PERSISTENT STATE
 
+    // Unique, non-zero base for drawing line numbers. LineNumber 0 is treated
+    // by Sierra Chart as "unassigned", which makes UTAM_ADD_OR_ADJUST add a
+    // brand new drawing every pass instead of adjusting the existing one.
+    const int LINE_NUMBER_BASE = 71000;
+
+    double &NextFileCheck = sc.GetPersistentDouble(0); // SCDateTime as double
+    int &LastDrawnCount = sc.GetPersistentInt(0); // how many tools we drew last pass
+    int &LastArraySize = sc.GetPersistentInt(1); // bar count at last draw
+    SCString &LastFileContent = sc.GetPersistentSCString(0);
+
+    // Clean up when the study is removed or the chart closes.
+    if (sc.LastCallToFunction) {
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_ALL, 0);
+        return;
+    }
+
+    // THE FIX FOR THE FLICKER.
+    //
+    // On a full recalculation (chart refresh, settings change, new data load)
+    // Sierra Chart deletes every drawing this study added. The old code gated
+    // redrawing on "has the wall-clock minute changed", and that gate variable
+    // was persistent, so after a refresh it still matched the current minute
+    // and the study refused to redraw. The drawings stayed gone until the
+    // minute rolled over, then came back - which is the on/off flicker.
+    //
+    // Here we simply clear all the "already drawn" state so the block below
+    // re-draws immediately on the same pass the drawings were wiped.
     if (sc.IsFullRecalculation) {
-        RequestState = REQUEST_IDLE;
-        LastRequestedIndex = -1;
+        NextFileCheck = 0.0;
+        LastDrawnCount = 0;
+        LastArraySize = 0;
+        LastFileContent = "";
     }
 
 #pragma endregion
-
-    /*if (RequestState == REQUEST_SENT) {
-        if (sc.HTTPResponse != "") {
-            RequestState = REQUEST_IDLE;
-
-#pragma region PROCESS HTML
-            //const char *p = sc.HTTPResponse.GetChars();
-
-            /*
-            if (strstr(p, "Tradersmarts") == NULL) {
-                sc.AddMessageToLog(txt.Format("Tradersmarts string - not found"), 1);
-                //return;
-            }
-
-            SCString CurrentLine;
-            while (*p != '\0') {
-                CurrentLine = "";
-                const char *LineStart = p;
-                int LineLength = 0;
-                while (*p != '\0' && *p != '\n' && *p != '\r') {
-                    ++p;
-                    ++LineLength;
-                }
-                while (*p == '\n' || *p == '\r')
-                    ++p;
-                if (LineLength > 0) {
-                    CurrentLine.Format("%.*s", LineLength, LineStart);
-                    sc.AddMessageToLog(txt.Format("Line = %d %s", LineLength, CurrentLine.GetChars()), 1);
-                }
-
-                const char *Src = sc.HTTPResponse.GetChars();
-                //if (strstr(sc.HTTPResponse.GetChars(), "API key is invalid")) break;;
-                //if (strstr(sc.HTTPResponse.GetChars(), "EMPTY_RESPONSE")) break;
-                int InsideTag = 0;
-
-                for (const char *c = Src; *c != '\0'; ++c) {
-                    if (*c == '<') {
-                        // Treat <br> and </p>, </tr>, </div> as line breaks
-                        if (_strnicmp(c, "<br", 3) == 0 || _strnicmp(c, "</p", 3) == 0 ||
-                            _strnicmp(c, "</tr", 4) == 0 || _strnicmp(c, "</div", 5) == 0) {
-                            Cleaned.Append("\n");
-                        }
-                        InsideTag = 1;
-                    } else if (*c == '>')
-                        InsideTag = 0;
-                    else if (!InsideTag) {
-                        SCString OneChar;
-                        OneChar.Format("%c", *c);
-                        Cleaned.Append(OneChar);
-                    }
-                }
-
-                std::string Work = Cleaned.GetChars();
-                ReplaceAllStr(Work, "&nbsp;", "");
-                ReplaceAllStr(Work, "&nbsp", "");
-                while (Work.find("  ") != std::string::npos)
-                    ReplaceAllStr(Work, "  ", " ");
-                ReplaceAllStr(Work, "Extreme", " Extreme");
-                ReplaceAllStr(Work, "Highest", " Highest");
-                ReplaceAllStr(Work, "Line", " Line");
-                ReplaceAllStr(Work, "Range", " Range");
-                Cleaned = Work.c_str();
-
-                sc.AddMessageToLog(txt.Format("Cleaned = %d %s", LineLength, Cleaned.GetChars()), 1);
-#pragma endregion
-
-                int idx = 1;
-                //std::vector<SCString> sLines;
-                Cleaned.ParseLines(sLines);
-
-                for (const SCString &ss: sLines) {
-                    sc.AddMessageToLog(w.Format("ss = %s", ss.GetChars()), 1);
-                    if (strstr(ss, "Sand") || strstr(ss, "Long") || strstr(ss, "Short")) {
-#pragma region TS RANGES
-                        int id = ss.IndexOf('-');
-                        if (id > 0) {
-                            int iS = ss.IndexOf(' ');
-                            if (iS > 0) {
-                                // 20294.25 - 20283.25 Range Short
-                                fStart = std::stof(ss.Left(iS).GetChars());
-                                int ix = ss.IndexOf(' ', iS + 3);
-                                SCString yy = ss.GetSubString(ix - iS - 3, iS + 3);
-                                desc = ss.GetSubString(ss.GetLength() - ix - 1, ix + 1);
-                                fEnd = std::stof(yy.GetChars());
-                                sc.AddMessageToLog(w.Format("Split = %f, %f", fStart, fEnd), 1);
-                                sc.AddMessageToLog(w.Format("Desc = %s, %f to %f", desc.GetChars(), fStart, fEnd), 1);
-
-                                s_UseTool Tool;
-                                Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                                Tool.LineWidth = 1;
-                                Tool.TransparencyLevel = 70;
-                                Tool.TextAlignment = DT_RIGHT;
-                                Tool.DrawingType = DRAWING_RECTANGLE_EXT_HIGHLIGHT;
-                                Tool.BeginValue = fStart;
-                                Tool.EndValue = fEnd;
-                                Tool.ChartNumber = sc.ChartNumber;
-                                Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                                Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                                Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                                Tool.ShowPrice = 0;
-                                Tool.Text.Format("%s", desc.GetChars());
-                                Tool.FontSize = 9;
-                                Tool.LineNumber = idx;
-                                if (strstr(desc, "Sand"))
-                                    Tool.Color = COLOR_GAINSBORO;
-                                else if (strstr(desc, "Short"))
-                                    Tool.Color = COLOR_RED;
-                                else if (strstr(desc, "Long"))
-                                    Tool.Color = COLOR_LIME;
-                                Tool.FontBold = true;
-                                Tool.SecondaryColor = Tool.Color;
-                                sc.UseTool(Tool);
-                                RecordCount++;
-#pragma endregion
-                            }
-                        } else {
-                            int iS = ss.IndexOf(' ');
-                            if (iS > 0) {
-#pragma region TS SINGLES
-                                fStart = std::stof(ss.Left(iS).GetChars());
-                                desc = ss.GetSubString(ss.GetLength() - iS - 1, iS + 1);
-                                //sc.AddMessageToLog(w.Format("%s = %f", desc.GetChars(), fStart), 1);
-                                RecordCount++;
-
-                                s_UseTool Tool;
-                                Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                                Tool.TextAlignment = DT_RIGHT;
-                                Tool.DrawingType = DRAWING_HORIZONTALLINE;
-                                Tool.BeginValue = fStart;
-                                Tool.EndValue = fStart;
-                                Tool.ChartNumber = sc.ChartNumber;
-                                Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                                Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                                Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                                Tool.ShowPrice = 0;
-                                Tool.Text.Format("%s", desc.GetChars());
-                                Tool.FontSize = 9;
-                                Tool.LineWidth = 1;
-                                Tool.LineNumber = idx;
-                                if (strstr(desc, "Sand"))
-                                    Tool.Color = COLOR_GAINSBORO;
-                                else if (strstr(desc, "Short"))
-                                    Tool.Color = COLOR_RED;
-                                else if (strstr(desc, "Long"))
-                                    Tool.Color = COLOR_LIME;
-                                Tool.FontBold = true;
-                                sc.UseTool(Tool);
-#pragma endregion
-                            }
-                        }
-                    }
-                    idx++;
-                }#1#
-
-                if (strstr(sc.HTTPResponse.GetChars(), "TradePlan") && RecordCount > 2)
-                    bFullyDrawn = 1;
-            }
-        } else {
-            // Still waiting on the server. Do not send another request yet.
-            return;
-        }
-    }
-*/
 
     if (sc.ArraySize < 2)
         return;
-    int LastClosedIndex = sc.ArraySize - 2; // sc.ArraySize - 1 is the still-forming bar
-    if (LastClosedIndex <= LastRequestedIndex) return;
-    if (LastClosedIndex < sc.ArraySize - 1 - 3) {
-        LastRequestedIndex = LastClosedIndex; // Don't process candles older than 3 candles from the current bar.
+
+    // Time gate: only touch the disk every N seconds.
+    const SCDateTime Now = sc.CurrentSystemDateTime;
+    if (Now.GetAsDouble() < NextFileCheck)
         return;
-    }
 
-    SCDateTime CurrentTime = sc.CurrentSystemDateTime;
-    txt.Format("%02d:%02d", CurrentTime.GetHour(), CurrentTime.GetMinute());
+    NextFileCheck = (Now + SCDateTime::SECONDS(max(1, Input_PollSeconds.GetInt()))).GetAsDouble();
 
-    if (!bFullyDrawn && prevTime != txt) {
-        int Year = 0, Month = 0, Day = 0, idx = 0;
-        sc.BaseDateTimeIn[LastClosedIndex].GetDateYMD(Year, Month, Day);
-        SCString URL;
-        SCString symbol;
+#pragma region RESOLVE SYMBOL AND READ FILE
 
-        prevTime = txt;
+    SCString Symbol;
+    const char *SymbolChars = sc.Symbol.GetChars();
 
-        if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) symbol = "NQ";
-        else if (strstr(sc.Symbol.GetChars(), "ES") != NULL) symbol = "ES";
-        else if (strstr(sc.Symbol.GetChars(), "YM") != NULL) symbol = "YM";
-        else if (strstr(sc.Symbol.GetChars(), "CL") != NULL) symbol = "CL";
-        else if (strstr(sc.Symbol.GetChars(), "6E") != NULL) symbol = "6E";
-        else if (strstr(sc.Symbol.GetChars(), "RTY") != NULL) symbol = "RTY";
+    if (strstr(SymbolChars, "NQ") != NULL) Symbol = "NQ";
+    else if (strstr(SymbolChars, "ES") != NULL) Symbol = "ES";
+    else if (strstr(SymbolChars, "YM") != NULL) Symbol = "YM";
+    else if (strstr(SymbolChars, "CL") != NULL) Symbol = "CL";
+    else if (strstr(SymbolChars, "6E") != NULL) Symbol = "6E";
+    else if (strstr(SymbolChars, "RTY") != NULL) Symbol = "RTY";
 
-        std::vector<SCString> sLines;
-        SCString sY = ReadTextFile(sc, txt.Format("%s\\%s.txt", Input_Directory.GetString(symbol.GetChars()).GetChars()));
-        const char *p = sY.GetChars();
+    if (Symbol.GetLength() == 0)
+        return; // unsupported symbol - leave whatever is on the chart alone
+
+    SCString FilePath;
+    FilePath.Format("%s\\%s.txt", Input_Directory.GetString(), Symbol.GetChars());
+
+    const SCString FileContent = ReadTextFile(sc, FilePath);
+
+    // Missing or empty file: keep the existing drawings rather than blanking
+    // the chart. Blanking on a transient read failure is another flicker source.
+    if (FileContent.GetLength() == 0)
+        return;
+
+    // Nothing changed and no new bars: leave the drawings exactly as they are.
+    if (FileContent == LastFileContent && sc.ArraySize == LastArraySize)
+        return;
+
+    LastFileContent = FileContent;
+    LastArraySize = sc.ArraySize;
+
+#pragma endregion
+
+#pragma region SPLIT INTO LINES
+
+    std::vector<SCString> Lines;
+    {
+        const char *p = FileContent.GetChars();
         SCString CurrentLine;
+
         while (*p != '\0') {
-            CurrentLine = "";
             const char *LineStart = p;
             int LineLength = 0;
+
             while (*p != '\0' && *p != '\n' && *p != '\r') {
                 ++p;
                 ++LineLength;
             }
             while (*p == '\n' || *p == '\r')
                 ++p;
+
             if (LineLength > 0) {
                 CurrentLine.Format("%.*s", LineLength, LineStart);
-                sc.AddMessageToLog(txt.Format("Line = %d %s", LineLength, CurrentLine.GetChars()), 1);
-                sLines.push_back(CurrentLine);
+                Lines.push_back(CurrentLine);
             }
         }
-
-        for (const SCString &ss: sLines) {
-            sc.AddMessageToLog(w.Format("ss = %s", ss.GetChars()), 1);
-            if (strstr(ss, "Sand") || strstr(ss, "Long") || strstr(ss, "Short")) {
-#pragma region TS RANGES
-                int id = ss.IndexOf('-');
-                if (id > 0) {
-                    int iS = ss.IndexOf(' ');
-                    if (iS > 0) {
-                        // 20294.25 - 20283.25 Range Short
-                        fStart = std::stof(ss.Left(iS).GetChars());
-                        int ix = ss.IndexOf(' ', iS + 3);
-                        SCString yy = ss.GetSubString(ix - iS - 3, iS + 3);
-                        desc = ss.GetSubString(ss.GetLength() - ix - 1, ix + 1);
-                        fEnd = std::stof(yy.GetChars());
-                        sc.AddMessageToLog(w.Format("Split = %f, %f", fStart, fEnd), 1);
-                        sc.AddMessageToLog(w.Format("Desc = %s, %f to %f", desc.GetChars(), fStart, fEnd), 1);
-
-                        s_UseTool Tool;
-                        Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                        Tool.LineWidth = 1;
-                        Tool.TransparencyLevel = 70;
-                        Tool.TextAlignment = DT_RIGHT;
-                        Tool.DrawingType = DRAWING_RECTANGLE_EXT_HIGHLIGHT;
-                        Tool.BeginValue = fStart;
-                        Tool.EndValue = fEnd;
-                        Tool.ChartNumber = sc.ChartNumber;
-                        Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                        Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                        Tool.ShowPrice = 0;
-                        Tool.Text.Format("%s", desc.GetChars());
-                        Tool.FontSize = 9;
-                        Tool.LineNumber = idx;
-                        if (strstr(desc, "Sand"))
-                            Tool.Color = COLOR_GAINSBORO;
-                        else if (strstr(desc, "Short"))
-                            Tool.Color = COLOR_RED;
-                        else if (strstr(desc, "Long"))
-                            Tool.Color = COLOR_LIME;
-                        Tool.FontBold = true;
-                        Tool.SecondaryColor = Tool.Color;
-                        sc.UseTool(Tool);
-                        RecordCount++;
-#pragma endregion
-                    }
-                } else {
-                    int iS = ss.IndexOf(' ');
-                    if (iS > 0) {
-#pragma region TS SINGLES
-                        fStart = std::stof(ss.Left(iS).GetChars());
-                        desc = ss.GetSubString(ss.GetLength() - iS - 1, iS + 1);
-                        sc.AddMessageToLog(w.Format("%s = %f", desc.GetChars(), fStart), 1);
-                        RecordCount++;
-
-                        s_UseTool Tool;
-                        Tool.LineStyle = LINESTYLE_DASHDOTDOT;
-                        Tool.TextAlignment = DT_RIGHT;
-                        Tool.DrawingType = DRAWING_HORIZONTALLINE;
-                        Tool.BeginValue = fStart;
-                        Tool.EndValue = fStart;
-                        Tool.ChartNumber = sc.ChartNumber;
-                        Tool.BeginDateTime = sc.BaseDateTimeIn[0];
-                        Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
-                        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-                        Tool.ShowPrice = 0;
-                        Tool.Text.Format("%s", desc.GetChars());
-                        Tool.FontSize = 9;
-                        Tool.LineWidth = 1;
-                        Tool.LineNumber = idx;
-                        if (strstr(desc, "Sand"))
-                            Tool.Color = COLOR_GAINSBORO;
-                        else if (strstr(desc, "Short"))
-                            Tool.Color = COLOR_RED;
-                        else if (strstr(desc, "Long"))
-                            Tool.Color = COLOR_LIME;
-                        Tool.FontBold = true;
-                        sc.UseTool(Tool);
-#pragma endregion
-                    }
-                }
-            }
-            idx++;
-        }
-
-        /*URL.Format(
-            "https://tradersmarts.quantkey.com/api/v1/plan.php?lic=%s&root=%s&date=%04d%02d%02d&apikey=%s",
-            Input_LicenseKey.GetString(),
-            symbol.GetChars(),
-            Year, Month, Day,
-            Input_APIKey.GetString());
-
-        //sc.AddMessageToLog(txt.Format("URL does eq %s", URL.GetChars()), 1);
-        if (!sc.MakeHTTPRequest(URL)) {
-            sc.AddMessageToLog("Error making HTTP request.", 1);
-            return; // leave state idle; will retry on next update
-        }*/
-
-        RequestState = REQUEST_SENT;
-        LastRequestedIndex = LastClosedIndex;
     }
+
+#pragma endregion
+
+#pragma region DRAW
+
+    const SCDateTime ChartBegin = sc.BaseDateTimeIn[0];
+    const SCDateTime ChartEnd = sc.BaseDateTimeIn[sc.ArraySize - 1];
+
+    int DrawnCount = 0; // counts only tools actually drawn, so line numbers stay stable
+
+    for (size_t LineIndex = 0; LineIndex < Lines.size(); ++LineIndex) {
+        const SCString &Line = Lines[LineIndex];
+        const char *LineChars = Line.GetChars();
+
+        if (strstr(LineChars, "Sand") == NULL
+            && strstr(LineChars, "Long") == NULL
+            && strstr(LineChars, "Short") == NULL)
+            continue;
+
+        std::vector<SCString> Tokens = TokenizeWhitespace(Line);
+        if (Tokens.size() < 2)
+            continue;
+
+        // "20294.25 - 20283.25 Range Short"  -> range
+        // "20294.25 Long Entry"              -> single level
+        const bool IsRange = (Tokens.size() >= 4 && strcmp(Tokens[1].GetChars(), "-") == 0);
+
+        float StartValue = 0.0f;
+        float EndValue = 0.0f;
+        SCString Description;
+
+        // atof, not std::stof: std::stof throws on a malformed line, and an
+        // exception escaping the study function tears down the DLL, which also
+        // makes the drawings vanish.
+        if (IsRange) {
+            StartValue = static_cast<float>(atof(Tokens[0].GetChars()));
+            EndValue = static_cast<float>(atof(Tokens[2].GetChars()));
+
+            for (size_t t = 3; t < Tokens.size(); ++t) {
+                if (t > 3) Description += " ";
+                Description += Tokens[t];
+            }
+        } else {
+            StartValue = static_cast<float>(atof(Tokens[0].GetChars()));
+            EndValue = StartValue;
+
+            for (size_t t = 1; t < Tokens.size(); ++t) {
+                if (t > 1) Description += " ";
+                Description += Tokens[t];
+            }
+        }
+
+        if (StartValue == 0.0f)
+            continue; // unparseable price, skip the line
+
+        COLORREF Color = COLOR_GAINSBORO;
+        const char *DescChars = Description.GetChars();
+        if (strstr(DescChars, "Sand") != NULL)
+            Color = COLOR_GAINSBORO;
+        else if (strstr(DescChars, "Short") != NULL)
+            Color = COLOR_RED;
+        else if (strstr(DescChars, "Long") != NULL)
+            Color = COLOR_LIME;
+
+        s_UseTool Tool;
+        Tool.Clear();
+        Tool.ChartNumber = sc.ChartNumber;
+        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+        Tool.LineNumber = LINE_NUMBER_BASE + DrawnCount; // stable and non-zero
+        Tool.LineStyle = LINESTYLE_DASHDOTDOT;
+        Tool.LineWidth = 1;
+        Tool.TextAlignment = DT_RIGHT;
+        Tool.ShowPrice = 0;
+        Tool.FontSize = 8;
+        Tool.FontBold = false;
+        Tool.Color = Color;
+        Tool.BeginValue = StartValue;
+        Tool.EndValue = EndValue;
+        Tool.BeginDateTime = ChartBegin;
+        Tool.EndDateTime = ChartEnd;
+        Tool.Text = Description;
+
+        if (IsRange) {
+            Tool.DrawingType = DRAWING_RECTANGLE_EXT_HIGHLIGHT;
+            Tool.TransparencyLevel = 70;
+            Tool.SecondaryColor = Color;
+        } else {
+            Tool.DrawingType = DRAWING_HORIZONTALLINE;
+        }
+
+        sc.UseTool(Tool);
+        ++DrawnCount;
+    }
+
+    // Remove drawings left over from a previous, longer file. Because existing
+    // drawings are adjusted in place rather than deleted and re-added, nothing
+    // that should stay on screen is ever momentarily removed.
+    for (int Stale = DrawnCount; Stale < LastDrawnCount; ++Stale)
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, LINE_NUMBER_BASE + Stale);
+
+    LastDrawnCount = DrawnCount;
+
+#pragma endregion
 }
