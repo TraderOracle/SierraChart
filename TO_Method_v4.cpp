@@ -1,30 +1,9 @@
 // ============================================================================================
-//  REVERSAL GRAIL - Sierra Chart ACSIL custom study
+//  TraderOracle Method v4, build 6 - Oct 4, 2026
 // ============================================================================================
-//
-//  One study, three modules. Each module has its own section of inputs in Study Settings,
-//  headed by a separator input with the module's name, and its own block of fixed settings in
-//  this file:
-//
-//    REVERSAL GRAIL            the reversal signal (BUY / SELL tags), stop / target tracking,
-//                              alerts 1-10, TraderOracle patterns, Resistance Cloud.
-//                              Fixed settings: "HOLY GRAIL REVERSALS - SETTINGS".
-//    LITTLE RIZZY              measured-move target levels from two swing pivots, touch /
-//                              break / expiry styling, touch-and-reverse arrows.
-//                              Fixed settings: "LITTLE RIZZY - SETTINGS".
-//    REVERSAL VOLUME PATTERNS  the four volume / candle reversal patterns (blue arrows).
-//                              Fixed settings: "VOLUME REVERSALS - SETTINGS".
-//
-//  All three modules' alerts go out as one combined Alert Manager entry per update, so Sierra
-//  Chart's one-alert-per-update rule never drops one.
-//
-//  ---------------------------------------------------------------- the REVERSAL GRAIL signal
-//
-//  One reversal signal built from the components that tested best across 10 public reversal
-//  indicators (LuxAlgo TD/Reversal Signals, VDUB %B divergence, Reversal Volume Patterns,
-//  BB re-entry, AlgoAlpha, Candlestick Reversal System, 3-Bar Reversal, Island Reversal,
-//  Pivot HL, Reversal Probability Zone), backtested on ~5M bars of index / commodity / FX /
-//  crypto / stock data with a development set and a separate holdout set.
+// HISTORY: I fed 208 reversal indicators into Fable 5.1 Max, with instructions to parse them
+// all, backtest over 10 years market data, and combine into a single, SUPER REVERSAL indicator.
+// Then I fed in LittleRizzy code, and my own Reversal Volume Patterns.
 //
 //  Values in <angle brackets> are constants in the HOLY GRAIL REVERSALS settings block below.
 //
@@ -121,14 +100,12 @@
 //
 //  MARKER STYLE
 //    Labels (default): tags drawn with Sierra Chart chart drawings. Regular signals are bold
-//      coloured text with no background - "BUY" in bright cyan below the bar, "SELL" in bright
-//      pink above it. A+ (4/4) signals get a filled tag, "BUY+" / "SELL+", with a soft glow
-//      behind the bar. <Signal Tag Text> can say LONG / SHORT instead. <Pin Stem> hangs the tag
-//      on a thin stem below / above the bar. "TR" tags for trampolines; a "TP" tag where a
-//      target line ends; squeeze dots (small amber dots, off by default - "Show Squeeze Dots").
-//      One tag per side per bar. Colours come from the matching subgraph colours (Buy, Sell,
-//      Buy A+, Sell A+, Trampoline Buy, Target Hit, ...); text on filled tags is picked
-//      automatically for contrast.
+//      coloured text with no background - "BUY" below the bar, "SELL" above it. A+ (4/4)
+//      signals get a filled tag, "BUY+" / "SELL+", with a soft glow behind the bar.
+//      <Signal Tag Text> can say LONG / SHORT instead. <Pin Stem> hangs the tag on a thin stem
+//      below / above the bar. Filled "TR" tags for trampolines; squeeze dots (small dots, off by
+//      default - "Show Squeeze Dots"). One tag per side per bar. Colours come from the colour
+//      theme (see COLOR THEMES); text on filled tags is picked automatically for contrast.
 //    Classic shapes (USE_LABEL_TAGS = false): the original subgraph arrows, triangles, stars and squares.
 //    The "Signal" subgraph (+score for buys, -score for sells) is filled in both styles for
 //    use in alert formulas, the Spreadsheet study or automated trading.
@@ -150,7 +127,7 @@ SCDLLName("TO Method v4")
 // =============================================================================================
 // =============================================================================================
 //
-//      HOLY GRAIL REVERSALS  -  SETTINGS
+//      TO Method v4  -  SETTINGS
 //
 //      These used to be study inputs. They are fixed here so the signal is the one that was
 //      tested. To change one, edit the value, rebuild the study (Analysis >> Build Custom Studies
@@ -158,7 +135,7 @@ SCDLLName("TO Method v4")
 //
 // =============================================================================================
 // =============================================================================================
-namespace HolyGrail
+namespace TOMethod4
 {
     // ---------------------------------------------------------------- the reversal signal
     const int   EXTREME_LOOKBACK_BARS     = 20;    // signal bar must be the lowest low (buy) / highest high (sell) of this many bars
@@ -339,12 +316,227 @@ struct RG_ExternalAlerts
 // Subgraph and input numbers of each module (inputs are numbered without gaps).
 const int RG_SG_LITTLE_RIZZY   = 34;
 const int RG_SG_VOLUME_PATTERN = 51;
-const int RG_IN_SEP_GRAIL      = 0;
-const int RG_IN_GRAIL          = 1;
-const int RG_IN_SEP_RIZZY      = 31;
-const int RG_IN_RIZZY          = 32;
-const int RG_IN_SEP_VOLUME     = 45;
-const int RG_IN_VOLUME         = 46;
+// Inputs are listed in Study Settings in index order, so Color Theme (0-1) comes first.
+const int RG_IN_SEP_THEME      = 0;
+const int RG_IN_THEME          = 1;
+const int RG_IN_SEP_GRAIL      = 2;
+const int RG_IN_GRAIL          = 3;    // 30 inputs: 3..32
+const int RG_IN_SEP_RIZZY      = 33;
+const int RG_IN_RIZZY          = 34;   // 13 inputs: 34..46
+const int RG_IN_SEP_VOLUME     = 47;
+const int RG_IN_VOLUME         = 48;   // 2 inputs: 48..49
+
+// =============================================================================================
+// =============================================================================================
+//
+//      COLOR THEMES
+//
+//      The "Color Theme" input (first section of the inputs) colours every marker of the three
+//      modules. Each theme is built on one colour scheme:
+//        - BUY and SELL are a complementary (or split-complementary) pair.
+//        - BUY+ / SELL+ (A+ tags and their glow) are a stronger shade of the same hue.
+//        - Trampoline, squeeze, volume-pattern and target colours take the remaining positions
+//          around the colour wheel, so each kind of marker has its own hue.
+//        - The Resistance Cloud is a muted pair, so the bright tags stay readable on top of it.
+//          Engulfing backgrounds are faint tints of the cloud colours, blended toward the
+//          chart background, and the cloud's outer lines are a darker shade of its inner lines.
+//        - Little Rizzy broken lines are a neutral grey tinted toward the target colour, and
+//          the touch blink is a near-white (dark chart) or near-black (light chart) flash.
+//
+//      Themes marked (dark) are tuned for a dark chart background, (light) for a white or light
+//      one. "Custom" leaves every colour as it is in Study Settings >> Subgraphs (and the Little
+//      Rizzy "Broken / Expired Target Line Color" inputs). Those start as the last theme's
+//      colours, so pick the closest theme first, then switch to Custom to fine-tune.
+//
+//      To add or change a theme, edit RG_THEMES and RG_THEME_NAMES together (same order),
+//      then rebuild.
+//
+// =============================================================================================
+// =============================================================================================
+struct RG_Theme
+{
+    COLORREF Buy, Sell;            // BUY / SELL tags (classic: arrows)
+    COLORREF BuyPlus, SellPlus;    // BUY+ / SELL+ filled tags and their glow (classic: A+ arrows)
+    COLORREF Trampoline;           // TR tags, both sides (classic: triangles)
+    COLORREF Squeeze;              // squeeze dots, both sides
+    COLORREF Volume;               // Reversal Volume Patterns squares, both sides
+    COLORREF Target;               // Little Rizzy target lines (classic: target-hit squares)
+    COLORREF Expired;              // Little Rizzy expired target lines and invalidated-setup dots
+    COLORREF CloudUpper;           // Resistance Cloud above price
+    COLORREF CloudLower;           // Resistance Cloud below price
+};
+
+static const RG_Theme RG_THEMES[] =
+{
+    //  Buy               Sell              Buy+              Sell+             TR                Squeeze           Volume            Target            Expired           Cloud upper       Cloud lower
+
+    // 1. Classic Neon (dark): the original colours, TR in red
+    { RGB(  0,230,255), RGB(255, 60,170), RGB(  0,230,255), RGB(255, 60,170), RGB(230, 30, 30), RGB(255,196,  0), RGB(  0,128,255), RGB(252,236,188), RGB(176, 73, 14), RGB(224, 49, 73), RGB(  0,168,107) },
+    // 2. Midnight Ocean (dark): turquoise / coral complements, gold, lavender, cornflower
+    { RGB( 64,224,208), RGB(255,127, 80), RGB(  0,245,212), RGB(255, 99, 64), RGB(255,214,102), RGB(180,160,255), RGB( 77,148,255), RGB(200,230,255), RGB(150, 90, 70), RGB(190, 90, 80), RGB( 40,140,150) },
+    // 3. Emerald & Ruby (dark): jewel tones - emerald, ruby, topaz, amethyst, sapphire, pearl
+    { RGB( 46,204,113), RGB(230, 57, 90), RGB(  0,230,118), RGB(255, 40, 90), RGB(241,196, 15), RGB(155, 89,182), RGB( 52,152,219), RGB(236,240,241), RGB(140,100, 60), RGB(150, 50, 70), RGB( 30,120, 90) },
+    // 4. Solarized Dark: blue / orange complements on the Solarized accent wheel
+    { RGB( 38,139,210), RGB(203, 75, 22), RGB( 80,165,235), RGB(230,100, 40), RGB(211, 54,130), RGB(181,137,  0), RGB( 42,161,152), RGB(238,232,213), RGB(101,123,131), RGB(170, 60, 55), RGB( 90, 95,160) },
+    // 5. Nord Aurora (dark): Nord aurora green / red with frost blue, mauve and sand
+    { RGB(163,190,140), RGB(191, 97,106), RGB(143,214,120), RGB(220, 90,100), RGB(180,142,173), RGB(235,203,139), RGB(136,192,208), RGB(236,239,244), RGB(160,105, 85), RGB(150, 85, 95), RGB( 94,129,172) },
+    // 6. Dracula (dark): Dracula green / red, purple, yellow, cyan, orange
+    { RGB( 80,250,123), RGB(255, 85, 85), RGB( 40,220,100), RGB(255, 60, 60), RGB(189,147,249), RGB(241,250,140), RGB(139,233,253), RGB(255,184,108), RGB(150,110, 80), RGB(190, 80,140), RGB(130,105,190) },
+    // 7. Monokai (dark): lime / hot pink, orange, purple, sky, white
+    { RGB(166,226, 46), RGB(249, 38,114), RGB(140,210, 20), RGB(230, 20, 95), RGB(253,151, 31), RGB(174,129,255), RGB(102,217,239), RGB(248,248,242), RGB(150,120, 90), RGB(150, 70,110), RGB( 70,130,150) },
+    // 8. Gruvbox (dark): warm retro - aqua / red, mauve, yellow, blue, cream
+    { RGB(142,192,124), RGB(251, 73, 52), RGB(120,200, 95), RGB(255,100, 70), RGB(211,134,155), RGB(250,189, 47), RGB(120,160,200), RGB(235,219,178), RGB(175, 90, 30), RGB(165,100, 60), RGB( 69,133,136) },
+    // 9. Tokyo Night (dark): teal / rose, violet, gold, green, periwinkle white
+    { RGB(115,218,202), RGB(247,118,142), RGB( 80,235,205), RGB(255, 95,125), RGB(187,154,247), RGB(224,175,104), RGB(158,206,106), RGB(235,236,245), RGB(170,110, 75), RGB(170, 90,120), RGB( 70,110,180) },
+    // 10. Catppuccin Mocha (dark): soft pastels - green / red, peach, mauve, sapphire, cream
+    { RGB(166,227,161), RGB(243,139,168), RGB(130,220,125), RGB(240,110,150), RGB(250,179,135), RGB(203,166,247), RGB(116,199,236), RGB(249,226,175), RGB(160,130,120), RGB(180,110,140), RGB( 90,150,170) },
+    // 11. Terminal Amber (dark): trading-terminal green / red with amber, violet, blue
+    { RGB( 60,220,100), RGB(255, 70, 70), RGB(  0,255,110), RGB(255, 40, 40), RGB(255,176,  0), RGB(200,120,255), RGB( 70,140,255), RGB(235,235,235), RGB(140,100, 40), RGB(150, 50, 50), RGB( 40,120, 70) },
+    // 12. Cyberpunk (dark): neon mint / magenta, electric blue, yellow, violet, orange
+    { RGB(  0,255,159), RGB(255,  0,110), RGB( 60,255,190), RGB(255, 60,150), RGB(  0,184,255), RGB(252,238, 10), RGB(189,  0,255), RGB(255,140,  0), RGB(110, 60,130), RGB(150, 20, 90), RGB( 20,110,150) },
+    // 13. Aurora Borealis (dark): mint / pink, violet, pale gold, sky, ice
+    { RGB(120,255,200), RGB(255,110,180), RGB( 60,240,170), RGB(240, 80,160), RGB(180,130,255), RGB(255,230,120), RGB( 90,170,255), RGB(210,240,255), RGB(120,100,150), RGB(130, 70,150), RGB( 40,130,120) },
+    // 14. Sunset Boulevard (dark): gold / coral warm pair, cool violet, sky and teal accents
+    { RGB(255,200, 87), RGB(255, 94, 98), RGB(255,175, 40), RGB(255, 60, 80), RGB(170,120,255), RGB(100,210,255), RGB(  0,200,170), RGB(235,225,245), RGB(130, 90, 70), RGB(170, 70, 90), RGB(150,120, 60) },
+    // 15. Steel & Copper (dark): steel blue / copper, orchid, brass, patina, silver
+    { RGB(110,180,230), RGB(230,130, 80), RGB( 70,160,240), RGB(240,110, 50), RGB(190,120,220), RGB(230,200,120), RGB(120,200,170), RGB(220,225,230), RGB(130, 90, 70), RGB(150, 90, 70), RGB( 70,110,140) },
+    // 16. Forest Canopy (dark): leaf / rust, heather, wheat, river blue, mist
+    { RGB(140,200, 90), RGB(215,100, 70), RGB(110,190, 60), RGB(230, 80, 50), RGB(180,140,220), RGB(240,210,110), RGB(100,170,200), RGB(215,225,235), RGB(120, 95, 70), RGB(140, 80, 60), RGB( 60,110, 70) },
+    // 17. Royal Velvet (dark): gold / violet complements, crimson, jade, royal blue, ivory
+    { RGB(255,200, 70), RGB(200,110,255), RGB(255,180, 20), RGB(180, 80,255), RGB(255,100,120), RGB(100,230,200), RGB( 90,150,255), RGB(245,235,215), RGB(130, 80,100), RGB(130, 70,150), RGB(150,120, 50) },
+    // 18. Graphite (dark): minimal - green / red accents, white TR, muted gold, slate, soft lilac
+    { RGB( 64,214,160), RGB(240, 96, 96), RGB( 30,190,135), RGB(225, 70, 70), RGB(230,230,230), RGB(210,180,100), RGB(100,150,220), RGB(185,175,215), RGB(110,110,110), RGB(120, 95,100), RGB( 90,110,115) },
+    // 19. Vaporwave (dark): cyan / pink, lemon, mint, purple, peach
+    { RGB(  1,205,254), RGB(255,113,206), RGB(  0,170,255), RGB(255, 70,190), RGB(255,251,150), RGB(  5,255,161), RGB(185,103,255), RGB(255,190,120), RGB(120, 80,130), RGB(170, 70,150), RGB( 60, 90,170) },
+    // 20. Tropical (dark): jade / watermelon, mango, orchid, lagoon, sand
+    { RGB(  0,220,160), RGB(255, 90, 95), RGB(  0,200,140), RGB(255, 60, 70), RGB(255,200,  0), RGB(190,120,255), RGB(  0,160,255), RGB(255,240,210), RGB(150,100, 60), RGB(170, 70, 90), RGB( 30,120,150) },
+    // 21. Twilight Rose (dark): sage / rose, apricot, lilac, aqua, blush
+    { RGB(150,215,170), RGB(240,120,160), RGB(110,210,150), RGB(240, 80,140), RGB(255,190,110), RGB(190,150,255), RGB(100,200,220), RGB(245,225,230), RGB(130, 90,110), RGB(150, 80,120), RGB( 80,130,110) },
+    // 22. Color-Safe (dark): Okabe-Ito palette, readable with colour-vision deficiency
+    { RGB( 86,180,233), RGB(235,110, 20), RGB( 40,160,230), RGB(213, 94,  0), RGB(204,121,167), RGB(240,228, 66), RGB(  0,158,115), RGB(230,230,230), RGB(150,120, 60), RGB(180, 90, 40), RGB(  0,114,178) },
+    // 23. Paper Classic (light): deep green / crimson, orange, purple, blue, dark gold
+    { RGB(  0,140, 90), RGB(200, 30, 50), RGB(  0,120, 75), RGB(180, 20, 40), RGB(230,110,  0), RGB(120, 60,180), RGB( 20, 90,200), RGB(150,120, 40), RGB(170,140,130), RGB(210, 90,100), RGB( 60,160,120) },
+    // 24. Solarized Light: blue / red, magenta, yellow, cyan, slate
+    { RGB( 38,139,210), RGB(220, 50, 47), RGB( 20,110,190), RGB(200, 30, 30), RGB(211, 54,130), RGB(181,137,  0), RGB( 42,161,152), RGB( 88,110,117), RGB(147,161,161), RGB(210,110, 80), RGB(108,113,196) },
+    // 25. Salmon Paper (light): financial-paper jade / claret, mandarin, velvet, oxford blue, slate
+    { RGB(  0,153, 77), RGB(153, 15, 61), RGB(  0,130, 65), RGB(204,  0,  0), RGB(225,105, 20), RGB( 89, 51,128), RGB( 15, 84,153), RGB( 38, 42, 51), RGB(190,160,140), RGB(204,120,140), RGB(120,170, 60) },
+    // 26. Nordic Light: moss / rose, ochre, heather, frost blue, polar slate
+    { RGB(100,140, 80), RGB(191, 97,106), RGB( 80,125, 60), RGB(170, 70, 80), RGB(190,120, 30), RGB(150,100,150), RGB( 94,129,172), RGB( 76, 86,106), RGB(170,150,130), RGB(200,130,135), RGB(110,150,170) },
+    // 27. Ink & Coral (light): ink teal / coral, purple, mustard, forest green, graphite
+    { RGB(  0,110,130), RGB(230, 90, 70), RGB(  0, 90,110), RGB(210, 60, 45), RGB(140, 50,170), RGB(180,130,  0), RGB( 60,140, 60), RGB( 90, 90,100), RGB(190,150,140), RGB(220,140,120), RGB( 90,160,170) },
+    // 28. Earth Tones (light): olive / terracotta, denim, ochre, heather, umber
+    { RGB( 70,120, 60), RGB(170, 70, 40), RGB( 50,105, 40), RGB(150, 50, 25), RGB( 40,100,140), RGB(175,125, 25), RGB(110, 80,140), RGB(100, 80, 60), RGB(180,160,140), RGB(190,120, 90), RGB(120,160,110) },
+    // 29. Color-Safe (light): Okabe-Ito palette, readable with colour-vision deficiency
+    { RGB(  0,114,178), RGB(213, 94,  0), RGB(  0, 90,150), RGB(190, 75,  0), RGB(204,121,167), RGB(205,135,  0), RGB(  0,158,115), RGB( 40, 40, 40), RGB(170,170,170), RGB(225,150,110), RGB( 86,180,233) },
+    // 30. Monochrome (light): minimal - green / red accents, charcoal TR, greys
+    { RGB(  0,130, 80), RGB(190, 40, 40), RGB(  0,110, 65), RGB(165, 25, 25), RGB( 60, 60, 60), RGB(130,130,130), RGB( 90,110,150), RGB(120,100, 70), RGB(180,180,180), RGB(175,150,150), RGB(140,165,155) },
+};
+
+const int RG_THEME_COUNT = 30;
+static_assert(sizeof(RG_THEMES) / sizeof(RG_THEMES[0]) == RG_THEME_COUNT,
+              "RG_THEMES must have one entry per theme name in RG_THEME_NAMES");
+
+// Dropdown entries: the 30 themes in RG_THEMES order, then Custom.
+static const char RG_THEME_NAMES[] =
+    "1. Classic Neon (dark);"
+    "2. Midnight Ocean (dark);"
+    "3. Emerald & Ruby (dark);"
+    "4. Solarized (dark);"
+    "5. Nord Aurora (dark);"
+    "6. Dracula (dark);"
+    "7. Monokai (dark);"
+    "8. Gruvbox (dark);"
+    "9. Tokyo Night (dark);"
+    "10. Catppuccin Mocha (dark);"
+    "11. Terminal Amber (dark);"
+    "12. Cyberpunk (dark);"
+    "13. Aurora Borealis (dark);"
+    "14. Sunset Boulevard (dark);"
+    "15. Steel & Copper (dark);"
+    "16. Forest Canopy (dark);"
+    "17. Royal Velvet (dark);"
+    "18. Graphite (dark);"
+    "19. Vaporwave (dark);"
+    "20. Tropical (dark);"
+    "21. Twilight Rose (dark);"
+    "22. Color-Safe (dark);"
+    "23. Paper Classic (light);"
+    "24. Solarized (light);"
+    "25. Salmon Paper (light);"
+    "26. Nordic (light);"
+    "27. Ink & Coral (light);"
+    "28. Earth Tones (light);"
+    "29. Color-Safe (light);"
+    "30. Monochrome (light);"
+    "Custom (Study Settings colors)";
+
+// Mix two colours: t = 0 gives A, t = 1 gives B.
+static COLORREF RG_Mix(COLORREF A, COLORREF B, float t)
+{
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    const int ar =  A        & 0xFF, ag = (A >> 8) & 0xFF, ab = (A >> 16) & 0xFF;
+    const int br =  B        & 0xFF, bg = (B >> 8) & 0xFF, bb = (B >> 16) & 0xFF;
+    return RGB(static_cast<int>(ar + (br - ar) * t + 0.5f),
+               static_cast<int>(ag + (bg - ag) * t + 0.5f),
+               static_cast<int>(ab + (bb - ab) * t + 0.5f));
+}
+
+// Writes the selected theme into the subgraph colours (and the two Little Rizzy line colour
+// inputs) that every module draws with. Custom: nothing is changed.
+static void RG_ApplyTheme(SCStudyInterfaceRef sc)
+{
+    const int index = sc.Input[RG_IN_THEME].GetIndex();
+    if (index < 0 || index >= RG_THEME_COUNT)
+        return;
+
+    const RG_Theme& T = RG_THEMES[index];
+    const COLORREF back = sc.ChartBackgroundColor;
+    const int brightness = ((back & 0xFF) * 299 + ((back >> 8) & 0xFF) * 587 + ((back >> 16) & 0xFF) * 114) / 1000;
+    const COLORREF contrast = (brightness < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
+
+    auto Set = [&](int sg, COLORREF c)
+    {
+        sc.Subgraph[sg].PrimaryColor = c;
+    };
+    auto SetFill = [&](int sg, COLORREF c)
+    {
+        sc.Subgraph[sg].PrimaryColor = c;
+        sc.Subgraph[sg].SecondaryColor = c;
+    };
+
+    // ---- REVERSAL GRAIL
+    Set(0, T.Buy);                                          // Buy
+    Set(1, T.Sell);                                         // Sell
+    Set(2, T.BuyPlus);                                      // Buy A+
+    Set(3, T.SellPlus);                                     // Sell A+
+    Set(8, T.Target);                                       // Target Hit (classic squares)
+    Set(13, T.Trampoline);                                  // Trampoline Buy
+    Set(14, T.Trampoline);                                  // Trampoline Sell
+    Set(15, RG_Mix(T.CloudLower, back, 0.72f));             // Engulfing Green BB (background)
+    Set(16, RG_Mix(T.CloudUpper, back, 0.72f));             // Engulfing Red BB (background)
+    Set(17, T.Squeeze);                                     // Squeeze Buy Dot
+    Set(18, T.Squeeze);                                     // Squeeze Sell Dot
+    SetFill(25, T.CloudUpper);                              // upper cloud fill
+    SetFill(26, T.CloudUpper);
+    SetFill(27, T.CloudLower);                              // lower cloud fill
+    SetFill(28, T.CloudLower);
+    Set(30, RG_Mix(T.CloudUpper, back, 0.35f));             // Upper Cloud Outer Line
+    Set(31, T.CloudUpper);                                  // Upper Cloud Inner Line
+    Set(32, T.CloudLower);                                  // Lower Cloud Inner Line
+    Set(33, RG_Mix(T.CloudLower, back, 0.35f));             // Lower Cloud Outer Line
+
+    // ---- LITTLE RIZZY
+    Set(RG_SG_LITTLE_RIZZY + 6, T.Target);                         // target line colour
+    Set(RG_SG_LITTLE_RIZZY + 7, RG_Mix(contrast, T.Target, 0.25f)); // touch blink colour
+    Set(RG_SG_LITTLE_RIZZY + 8, T.Expired);                        // invalidated-setup dots
+    sc.Input[RG_IN_RIZZY + 3].SetColor(RG_Mix(RGB(140, 140, 150), T.Target, 0.12f));   // broken lines
+    sc.Input[RG_IN_RIZZY + 4].SetColor(T.Expired);                                      // expired lines
+
+    // ---- REVERSAL VOLUME PATTERNS
+    Set(RG_SG_VOLUME_PATTERN + 0, T.Volume);
+    Set(RG_SG_VOLUME_PATTERN + 1, T.Volume);
+}
 
 // =============================================================================================
 //  MODULE 1: REVERSAL GRAIL signal
@@ -481,13 +673,14 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
             "close, and those that also broke the outer Bollinger band. Also shows the TraderOracle "
             "trampoline, engulfing-at-band and squeeze dot patterns and the TraderOracle Method "
             "Resistance Cloud (Nadaraya-Watson envelope), with their own alerts. Includes the Little "
-            "Rizzy measured-move levels and the Reversal Volume Patterns.";
+            "Rizzy measured-move levels and the Reversal Volume Patterns. 30 colour themes.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
         sc.ValueFormat = VALUEFORMAT_INHERITED;
         sc.AlertOnlyOncePerBar = 0;
         sc.ResetAlertOnNewBar = 1;
 
+        // Colours below are the defaults (theme 1, Classic Neon); the colour theme replaces them.
         Subgraph_Buy.Name = "Buy";
         Subgraph_Buy.DrawStyle = DRAWSTYLE_ARROW_UP;
         Subgraph_Buy.PrimaryColor = RGB(0, 230, 255);
@@ -536,7 +729,7 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
 
         Subgraph_TargetHit.Name = "Target Hit";
         Subgraph_TargetHit.DrawStyle = DRAWSTYLE_SQUARE;
-        Subgraph_TargetHit.PrimaryColor = RGB(255, 200, 60);
+        Subgraph_TargetHit.PrimaryColor = RGB(252, 236, 188);
         Subgraph_TargetHit.LineWidth = 4;
         Subgraph_TargetHit.DrawZeros = false;
 
@@ -609,13 +802,13 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         // ------------------------------------------------ TraderOracle patterns
         Subgraph_TrampBuy.Name = "Trampoline Buy";
         Subgraph_TrampBuy.DrawStyle = DRAWSTYLE_TRIANGLE_UP;
-        Subgraph_TrampBuy.PrimaryColor = RGB(124, 156, 255);
+        Subgraph_TrampBuy.PrimaryColor = RGB(230, 30, 30);
         Subgraph_TrampBuy.LineWidth = 3;
         Subgraph_TrampBuy.DrawZeros = false;
 
         Subgraph_TrampSell.Name = "Trampoline Sell";
         Subgraph_TrampSell.DrawStyle = DRAWSTYLE_TRIANGLE_DOWN;
-        Subgraph_TrampSell.PrimaryColor = RGB(124, 156, 255);
+        Subgraph_TrampSell.PrimaryColor = RGB(230, 30, 30);
         Subgraph_TrampSell.LineWidth = 3;
         Subgraph_TrampSell.DrawZeros = false;
 
@@ -798,27 +991,27 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     }
 
     // ---------------------------------------------------------------- settings
-    const int    lookback    = HolyGrail::EXTREME_LOOKBACK_BARS;
-    const int    minScore    = HolyGrail::MIN_SCORE_TO_SIGNAL;
-    const int    tdMin       = HolyGrail::PERSISTENCE_COUNT;
-    const int    divFar      = UrsMaxI(HolyGrail::DIVERGENCE_WINDOW_START, HolyGrail::DIVERGENCE_WINDOW_END + 1);
-    const int    divNear     = HolyGrail::DIVERGENCE_WINDOW_END;
-    const int    bbLen       = HolyGrail::ZSCORE_BOLLINGER_LENGTH;
-    const bool   useVol      = HolyGrail::USE_VOLUME;
-    const int    volLen      = HolyGrail::VOLUME_AVERAGE_LENGTH;
-    const double quietRVol   = HolyGrail::QUIET_VOLUME_THRESHOLD;
-    const double climaxVeto  = HolyGrail::CLIMAX_VOLUME_VETO;
-    const int    emaLen      = HolyGrail::TREND_EMA_LENGTH;
-    const double zVeto       = HolyGrail::BAND_BLOWTHROUGH_VETO;
-    const double rangeVeto   = HolyGrail::WIDE_RANGE_BAR_VETO;
-    const int    atrLen      = HolyGrail::ATR_LENGTH;
-    const int    cooldown    = HolyGrail::COOLDOWN_BARS;
-    const double stopBuf     = HolyGrail::STOP_BUFFER_ATR;
-    const double minRisk     = HolyGrail::MIN_RISK_ATR;
-    const double targetR     = HolyGrail::TARGET_R;
-    const bool   showLevels  = HolyGrail::SHOW_STOP_TARGET_LINES;
-    const double arrowOff    = HolyGrail::TAG_OFFSET_ATR;
-    const bool   closeOnly   = HolyGrail::EVALUATE_ON_BAR_CLOSE;
+    const int    lookback    = TOMethod4::EXTREME_LOOKBACK_BARS;
+    const int    minScore    = TOMethod4::MIN_SCORE_TO_SIGNAL;
+    const int    tdMin       = TOMethod4::PERSISTENCE_COUNT;
+    const int    divFar      = UrsMaxI(TOMethod4::DIVERGENCE_WINDOW_START, TOMethod4::DIVERGENCE_WINDOW_END + 1);
+    const int    divNear     = TOMethod4::DIVERGENCE_WINDOW_END;
+    const int    bbLen       = TOMethod4::ZSCORE_BOLLINGER_LENGTH;
+    const bool   useVol      = TOMethod4::USE_VOLUME;
+    const int    volLen      = TOMethod4::VOLUME_AVERAGE_LENGTH;
+    const double quietRVol   = TOMethod4::QUIET_VOLUME_THRESHOLD;
+    const double climaxVeto  = TOMethod4::CLIMAX_VOLUME_VETO;
+    const int    emaLen      = TOMethod4::TREND_EMA_LENGTH;
+    const double zVeto       = TOMethod4::BAND_BLOWTHROUGH_VETO;
+    const double rangeVeto   = TOMethod4::WIDE_RANGE_BAR_VETO;
+    const int    atrLen      = TOMethod4::ATR_LENGTH;
+    const int    cooldown    = TOMethod4::COOLDOWN_BARS;
+    const double stopBuf     = TOMethod4::STOP_BUFFER_ATR;
+    const double minRisk     = TOMethod4::MIN_RISK_ATR;
+    const double targetR     = TOMethod4::TARGET_R;
+    const bool   showLevels  = TOMethod4::SHOW_STOP_TARGET_LINES;
+    const double arrowOff    = TOMethod4::TAG_OFFSET_ATR;
+    const bool   closeOnly   = TOMethod4::EVALUATE_ON_BAR_CLOSE;
     const int    maxTrack    = UrsMaxI(1, Input_MaxTrackBars.GetInt());
 
     int alertDir[URS_ALERT_KINDS];
@@ -845,41 +1038,41 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     alertSound[URS_ALERT_TRAMP_CLOUD]   = Input_AlertTrCloudSound.GetInt();
 
     const double tick        = (sc.TickSize > 0) ? sc.TickSize : 1e-8;
-    const double openEqTol   = (HolyGrail::OPEN_EQ_TOLERANCE_TICKS + 0.5) * tick;
-    const int    bandLen     = HolyGrail::ALERT_BB_LENGTH;
-    const double bandMult    = HolyGrail::ALERT_BB_STDDEV;
-    const bool   bandOnClose = HolyGrail::BAND_BREAK_ON_CLOSE;
-    const bool   showBands   = HolyGrail::SHOW_ALERT_BANDS;
-    const bool   showOpenEq  = HolyGrail::MARK_OPEN_EQ_SIGNALS;
+    const double openEqTol   = (TOMethod4::OPEN_EQ_TOLERANCE_TICKS + 0.5) * tick;
+    const int    bandLen     = TOMethod4::ALERT_BB_LENGTH;
+    const double bandMult    = TOMethod4::ALERT_BB_STDDEV;
+    const bool   bandOnClose = TOMethod4::BAND_BREAK_ON_CLOSE;
+    const bool   showBands   = TOMethod4::SHOW_ALERT_BANDS;
+    const bool   showOpenEq  = TOMethod4::MARK_OPEN_EQ_SIGNALS;
 
-    const bool   showTramp     = HolyGrail::SHOW_TRAMPOLINE;
-    const int    trampMode     = HolyGrail::TRAMPOLINE_BAND_CHECK;
-    const float  trampRSIHigh  = (float)HolyGrail::TRAMPOLINE_RSI_OVERBOUGHT;
-    const float  trampRSILow   = (float)HolyGrail::TRAMPOLINE_RSI_OVERSOLD;
-    const bool   showEngulf    = HolyGrail::SHOW_ENGULFING;
-    const int    engulfRule    = HolyGrail::ENGULFING_RULE;
-    const bool   engulfNoDoji  = HolyGrail::ENGULFING_SKIP_DOJI;
+    const bool   showTramp     = TOMethod4::SHOW_TRAMPOLINE;
+    const int    trampMode     = TOMethod4::TRAMPOLINE_BAND_CHECK;
+    const float  trampRSIHigh  = (float)TOMethod4::TRAMPOLINE_RSI_OVERBOUGHT;
+    const float  trampRSILow   = (float)TOMethod4::TRAMPOLINE_RSI_OVERSOLD;
+    const bool   showEngulf    = TOMethod4::SHOW_ENGULFING;
+    const int    engulfRule    = TOMethod4::ENGULFING_RULE;
+    const bool   engulfNoDoji  = TOMethod4::ENGULFING_SKIP_DOJI;
     const bool   showSqueeze   = Input_ShowSqueeze.GetYesNo() != 0;
-    const int    sqLen         = HolyGrail::SQUEEZE_LENGTH;
+    const int    sqLen         = TOMethod4::SQUEEZE_LENGTH;
     const double sqOffset      = Input_SqueezeOffset.GetInt() * (double)sc.TickSize;
     const double trampOffset   = Input_TrampOffset.GetInt() * (double)sc.TickSize;
 
-    const bool   useLabels     = HolyGrail::USE_LABEL_TAGS;
+    const bool   useLabels     = TOMethod4::USE_LABEL_TAGS;
     const bool   classic       = !useLabels;
-    const int    labelSize     = HolyGrail::LABEL_FONT_SIZE;
-    const bool   labelGlow     = HolyGrail::GLOW_BEHIND_A_PLUS;
+    const int    labelSize     = TOMethod4::LABEL_FONT_SIZE;
+    const bool   labelGlow     = TOMethod4::GLOW_BEHIND_A_PLUS;
     const int    tagText       = Input_TagText.GetIndex();
     const bool   pinStem       = Input_PinStem.GetYesNo() != 0;
     const double pinStemLen    = Input_PinStemLength.GetFloat();
 
     // Resistance Cloud (Nadaraya-Watson envelope) settings and kernel weights
     const bool   showCloud     = Input_ShowCloud.GetYesNo() != 0;
-    const int    cloudLookback = UrsMaxI(1, HolyGrail::CLOUD_KERNEL_LOOKBACK);
-    const double cloudRelW     = HolyGrail::CLOUD_RELATIVE_WEIGHT;
-    const int    cloudWindow   = UrsMaxI(0, HolyGrail::CLOUD_START_AT_BAR) + 2;
-    const int    cloudATRLen   = UrsMaxI(1, HolyGrail::CLOUD_ATR_LENGTH);
-    const double cloudNear     = HolyGrail::CLOUD_NEAR_ATR_FACTOR;
-    const double cloudFar      = HolyGrail::CLOUD_FAR_ATR_FACTOR;
+    const int    cloudLookback = UrsMaxI(1, TOMethod4::CLOUD_KERNEL_LOOKBACK);
+    const double cloudRelW     = TOMethod4::CLOUD_RELATIVE_WEIGHT;
+    const int    cloudWindow   = UrsMaxI(0, TOMethod4::CLOUD_START_AT_BAR) + 2;
+    const int    cloudATRLen   = UrsMaxI(1, TOMethod4::CLOUD_ATR_LENGTH);
+    const double cloudNear     = TOMethod4::CLOUD_NEAR_ATR_FACTOR;
+    const double cloudFar      = TOMethod4::CLOUD_FAR_ATR_FACTOR;
     const int    cloudFirst    = (cloudWindow - 1) + (cloudATRLen - 1);   // first bar with a cloud
     const bool   alert4Cloud   = Input_Alert4Band.GetIndex() == 1;
     std::vector<double> cloudW(cloudWindow);
@@ -1646,12 +1839,14 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
 
     // ================================================================ pass 4: labels
     // One tag per side per bar (signal and/or trampoline, optionally on a pin stem), squeeze
-    // dots, TP tags and the A+ glow are Sierra Chart chart drawings with a fixed LineNumber per bar and slot,
-    // so redrawing a bar adjusts its drawings instead of adding more. Drawings that are no
+    // dots and the A+ glow are Sierra Chart chart drawings with a fixed LineNumber per bar and
+    // slot, so redrawing a bar adjusts its drawings instead of adding more. Drawings that are no
     // longer wanted (a signal that disappeared while its bar was still forming) are deleted.
+    // The TP slots are no longer drawn; they stay in the slot list so the other slots keep
+    // their line numbers and any old TP tags are cleaned up as stale drawings.
     {
         const int lineBase = 1100000000 + (sc.StudyGraphInstanceID % 40) * 20000000;
-        const SCString fontFace = HolyGrail::LABEL_FONT;
+        const SCString fontFace = TOMethod4::LABEL_FONT;
         enum { SLOT_BUY = 0, SLOT_SELL, SLOT_SQ_BUY, SLOT_SQ_SELL, SLOT_TP_BUY, SLOT_TP_SELL, SLOT_GLOW_BUY, SLOT_GLOW_SELL,
                SLOT_STEM_BUY, SLOT_STEM_SELL, SLOT_COUNT };
 
@@ -1746,7 +1941,6 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
                 const double off = pinStem ? UrsMax(pinStemLen * atrNow, 4.0 * tick) : UrsMax(arrowOff * atrNow, 2.0 * tick);
                 const double stemGap = UrsMax(0.1 * atrNow, tick);
                 const int pat = (int)Array_PatFlags[i];
-                const int tp = (int)Array_TPFlags[i];
                 for (int side = 0; side < 2; ++side)
                 {
                     const bool isBuy = (side == 0);
@@ -1794,14 +1988,6 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
                                  isBuy ? Subgraph_SqueezeBuy.PrimaryColor : Subgraph_SqueezeSell.PrimaryColor,
                                  UrsMaxI(6, labelSize - 2), false);
                         want |= 1 << (isBuy ? SLOT_SQ_BUY : SLOT_SQ_SELL);
-                    }
-                    if (tp & (isBuy ? 1 : 2))
-                    {
-                        drawText(i, isBuy ? SLOT_TP_BUY : SLOT_TP_SELL,
-                                 isBuy ? Array_TPBuyValue[i] : Array_TPSellValue[i],
-                                 DT_LEFT | DT_VCENTER, " TP", Subgraph_TargetHit.PrimaryColor,
-                                 UrsMaxI(6, labelSize - 2), true);
-                        want |= 1 << (isBuy ? SLOT_TP_BUY : SLOT_TP_SELL);
                     }
                     if (labelGlow && hasSignal && score >= 4 && atrNow > 0)
                     {
@@ -1944,7 +2130,7 @@ namespace LittleRizzy
     const COLORREF BEAR_TREND_COLOR   = RGB(220, 80, 80);
     const COLORREF BULL_TREND_COLOR   = RGB(80, 190, 110);
     const COLORREF MEASURE_COLOR      = RGB(0, 0, 0);       // "H" label
-    const COLORREF TARGET_COLOR       = RGB(252, 236, 188);
+    const COLORREF TARGET_COLOR       = RGB(252, 236, 188); // default only: the colour theme sets the "Rizzy: Target" subgraph colour
     const int      DRAW_TREND_LINE    = 0;
     const int      TREND_LINE_OPACITY = 0;      // %, 100 = solid, 0 = invisible
 
@@ -1968,7 +2154,7 @@ namespace LittleRizzy
     const int      APPROACH_MAX_WIDTH = 11;      // dashed, grows as price closes in
     const int      APPROACH_ZONE_PCT  = 50;     // % of the setup's measured move (H)
     const int      FAR_FADE_PCT       = 50;     // 0-90, how far a distant line fades
-    const COLORREF BLINK_COLOR        = RGB(255, 255, 255);
+    const COLORREF BLINK_COLOR        = RGB(255, 255, 255); // default only: the colour theme sets the "Rizzy: Target Hit" subgraph colour
     const int      BLINK_MS           = 250;    // length of each flash / off step
 }
 //############################################################################
@@ -2198,8 +2384,8 @@ struct LR_LookInputs
     float    ZonePct;        // approach zone, % of the setup's measured move
     int      FarDimPct;      // how far toward the background a distant line fades
 
-    // Sierra Chart lines and text can't be truly transparent, so these fade
-    // the color toward the chart background instead (0 = off, 0.9 = faint).
+    // Sierra Chart lines and text can't be truly transparent, so these
+    // fade the color toward the chart background instead (0 = off, 0.9 = faint).
     float    LineFade;
     float    TextFade;
 
@@ -2720,8 +2906,8 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     SCSubgraphRef Sg_SwingHigh  = sc.Subgraph[RG_SG_LITTLE_RIZZY + 3];
     SCSubgraphRef Sg_SwingLow   = sc.Subgraph[RG_SG_LITTLE_RIZZY + 4];
     SCSubgraphRef Sg_TrendLine  = sc.Subgraph[RG_SG_LITTLE_RIZZY + 5];
-    SCSubgraphRef Sg_Target     = sc.Subgraph[RG_SG_LITTLE_RIZZY + 6];
-    SCSubgraphRef Sg_TargetHit  = sc.Subgraph[RG_SG_LITTLE_RIZZY + 7];
+    SCSubgraphRef Sg_Target     = sc.Subgraph[RG_SG_LITTLE_RIZZY + 6];   // its colour = target line colour
+    SCSubgraphRef Sg_TargetHit  = sc.Subgraph[RG_SG_LITTLE_RIZZY + 7];   // its colour = touch blink colour
     SCSubgraphRef Sg_Invalid    = sc.Subgraph[RG_SG_LITTLE_RIZZY + 8];
     SCSubgraphRef Sg_PercentB   = sc.Subgraph[RG_SG_LITTLE_RIZZY + 9];   // hidden by default
     SCSubgraphRef Sg_State      = sc.Subgraph[RG_SG_LITTLE_RIZZY + 10];  // hidden by default
@@ -2791,21 +2977,23 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         Sg_TrendLine.PrimaryColor = RGB(255, 200, 0);
         Sg_TrendLine.DrawZeros = false;
 
-        Sg_Target.Name = "Rizzy: Target";
+        // Its colour is the colour of the target lines and their labels.
+        Sg_Target.Name = "Rizzy: Target (target line color)";
         Sg_Target.DrawStyle = DRAWSTYLE_IGNORE;
-        Sg_Target.PrimaryColor = RGB(0, 200, 255);
+        Sg_Target.PrimaryColor = LittleRizzy::TARGET_COLOR;
         Sg_Target.DrawZeros = false;
 
-        Sg_TargetHit.Name = "Rizzy: Target Hit";
+        // Its colour is the flash colour of a target line when price touches it.
+        Sg_TargetHit.Name = "Rizzy: Target Hit (touch blink color)";
         Sg_TargetHit.DrawStyle = DRAWSTYLE_IGNORE;
         Sg_TargetHit.LineWidth = 6;
-        Sg_TargetHit.PrimaryColor = RGB(0, 220, 255);
+        Sg_TargetHit.PrimaryColor = LittleRizzy::BLINK_COLOR;
         Sg_TargetHit.DrawZeros = false;
 
         Sg_Invalid.Name = "Rizzy: Invalidated";
         Sg_Invalid.DrawStyle = DRAWSTYLE_POINT;
         Sg_Invalid.LineWidth = 6;
-        Sg_Invalid.PrimaryColor = RGB(255, 140, 0);
+        Sg_Invalid.PrimaryColor = RGB(176, 73, 14);
         Sg_Invalid.DrawZeros = false;
 
         Sg_PercentB.Name = "Rizzy: Percent B";
@@ -2883,6 +3071,8 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         In_WAEStudy.Name = "Waddah Source For Break Tag (None = Built-In)";
         In_WAEStudy.SetStudySubgraphValues(0, 0);
 
+        // These two colours are set by the colour theme; they apply as entered
+        // here only when the theme is Custom.
         In_BrokenColor.Name = "Broken Target Line Color";
         In_BrokenColor.SetColor(140, 140, 150);
 
@@ -2980,10 +3170,11 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         BlinkMs = 250;
 
     // Look settings for the target lines (clamped, so odd values can't
-    // produce zero-width or shrinking lines).
+    // produce zero-width or shrinking lines). Colours come from the colour
+    // theme, via the Target / Target Hit subgraphs and the two colour inputs.
     LR_LookInputs Look;
-    Look.TargetColor   = LittleRizzy::TARGET_COLOR;
-    Look.BlinkColor    = LittleRizzy::BLINK_COLOR;
+    Look.TargetColor   = Sg_Target.PrimaryColor;
+    Look.BlinkColor    = Sg_TargetHit.PrimaryColor;
     Look.BrokenColor   = In_BrokenColor.GetColor();
     Look.ExpiredColor  = In_ExpiredColor.GetColor();
     Look.Background    = sc.ChartBackgroundColor;
@@ -3192,9 +3383,7 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         const float Wae = (WAERef.GetArraySize() > b) ? WAERef[b] : Sg_WAETrend[b];
 
         SCString Out;
-        Out.Format(" Broken %d:%02d / %s / %.0f ",
-            BarTime.GetHour(), BarTime.GetMinute(),
-            LR_FormatSigned(Wae).GetChars(), sc.Volume[b]);
+        Out.Format(" Broken         ");
         return Out;
     };
 
@@ -3794,7 +3983,7 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
 //     - Filter using RSI
 //     - Arrow Offset (ticks)
 //
-//   Signals (arrow below bar = buy, arrow above bar = sell):
+//   Signals (marker below bar = buy, marker above bar = sell):
 //     Pattern #1 - small red bar, larger red bar, small green bar
 //     Pattern #2 - small red, larger red, even larger red, small green
 //     Pattern #3 - 4 same-color bars, then a larger opposite-color bar
@@ -3817,7 +4006,7 @@ namespace VolumeReversals
     const int   RSI_LENGTH     = 14;
 
     // ---- Arrow coloring ----
-    const bool COLOR_ARROWS_BY_PATTERN = false;  // true: #1 fuchsia, #2 purple, #3 blue, #4 yellow
+    const bool COLOR_ARROWS_BY_PATTERN = false;  // true: #1 fuchsia, #2 purple, #3 blue, #4 yellow (overrides the theme)
 }
 // =============================================================================================
 //   END VOLUME REVERSALS - SETTINGS
@@ -3832,8 +4021,8 @@ static void RG_VolumePatternsModule(SCStudyInterfaceRef sc)
     using namespace VolumeReversals;
 
     // ---- Plotted subgraphs ----
-    SCSubgraphRef Subgraph_Up   = sc.Subgraph[RG_SG_VOLUME_PATTERN + 0];   // buy  (arrow below bar)
-    SCSubgraphRef Subgraph_Down = sc.Subgraph[RG_SG_VOLUME_PATTERN + 1];   // sell (arrow above bar)
+    SCSubgraphRef Subgraph_Up   = sc.Subgraph[RG_SG_VOLUME_PATTERN + 0];   // buy  (marker below bar)
+    SCSubgraphRef Subgraph_Down = sc.Subgraph[RG_SG_VOLUME_PATTERN + 1];   // sell (marker above bar)
     SCSubgraphRef Subgraph_RSI  = sc.Subgraph[RG_SG_VOLUME_PATTERN + 2];   // internal
 
     // ---- Internal per-bar state (extra arrays) ----
@@ -3850,13 +4039,13 @@ static void RG_VolumePatternsModule(SCStudyInterfaceRef sc)
     {
         Subgraph_Up.Name         = "Vol Pattern: Buy Signal";
         Subgraph_Up.DrawStyle    = DRAWSTYLE_SQUARE;
-        Subgraph_Up.PrimaryColor = RGB(0, 128, 255);   // blue (as in original)
+        Subgraph_Up.PrimaryColor = RGB(113, 218, 245);   // blue (as in original)
         Subgraph_Up.LineWidth    = 2;
         Subgraph_Up.DrawZeros    = false;
 
         Subgraph_Down.Name         = "Vol Pattern: Sell Signal";
         Subgraph_Down.DrawStyle    = DRAWSTYLE_SQUARE;
-        Subgraph_Down.PrimaryColor = RGB(0, 128, 255);
+        Subgraph_Down.PrimaryColor = RGB(255, 153, 214);
         Subgraph_Down.LineWidth    = 2;
         Subgraph_Down.DrawZeros    = false;
 
@@ -4021,16 +4210,35 @@ SCSFExport scsf_TOMethod4(SCStudyInterfaceRef sc)
         // Section separators in Study Settings >> Inputs: one titled input ahead of each
         // module's inputs. They have no effect.
         const char* LINE = "------------------------------";
-        sc.Input[RG_IN_SEP_GRAIL].Name = "=========  REVERSAL GRAIL  =========";
+
+        // Theme 1 (index 0) is the default. Note: Sierra Chart saves input values by index, so a
+        // chart that had this study before Color Theme moved to the top must remove and re-add
+        // the study (or reset its inputs), otherwise its old values land in the wrong inputs.
+        sc.Input[RG_IN_THEME].Name = "Color Theme";
+        sc.Input[RG_IN_THEME].SetCustomInputStrings(RG_THEME_NAMES);
+        sc.Input[RG_IN_THEME].SetCustomInputIndex(0);
+        sc.Input[RG_IN_THEME].SetDescription(
+            "Colours every marker of all three modules. (dark) themes suit a dark chart background, "
+            "(light) themes a light one. Custom keeps the colours set in Study Settings >> Subgraphs; "
+            "they start as the last theme's colours.");
+
+        sc.Input[RG_IN_SEP_THEME].Name = "=========  COLOR THEME  =========";
+        sc.Input[RG_IN_SEP_THEME].SetCustomInputStrings(LINE);
+        sc.Input[RG_IN_SEP_THEME].SetCustomInputIndex(0);
+        sc.Input[RG_IN_SEP_GRAIL].Name = "=========  Reversal Logic  =========";
         sc.Input[RG_IN_SEP_GRAIL].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_GRAIL].SetCustomInputIndex(0);
-        sc.Input[RG_IN_SEP_RIZZY].Name = "=========  LITTLE RIZZY  =========";
+        sc.Input[RG_IN_SEP_RIZZY].Name = "=========  Little Rizzy  =========";
         sc.Input[RG_IN_SEP_RIZZY].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_RIZZY].SetCustomInputIndex(0);
         sc.Input[RG_IN_SEP_VOLUME].Name = "=========  REVERSAL VOLUME PATTERNS  =========";
         sc.Input[RG_IN_SEP_VOLUME].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_VOLUME].SetCustomInputIndex(0);
+
+
     }
+    else
+        RG_ApplyTheme(sc);
 
     // Little Rizzy runs first: on a full recalculation it clears all of this study's chart
     // drawings before the other modules draw theirs. The signal module runs last because it
