@@ -2,6 +2,43 @@
 
 SCDLLName("God Trades DLL")
 
+/*
+    God Trades
+
+    ------------------------------------------------------------------------
+    MAIN FIX: alerts replaying on chart refresh / recalculation.
+
+    Three separate things caused it:
+
+      1. Nothing stopped alert code from running during a full recalculation.
+         Sierra Chart re-runs the study over every bar in the chart when you
+         refresh, reload, change a setting, press INS, or when it back-fills
+         history.  Every one of those passes hit the alert calls again.
+
+      2. The `if (!bIsCurrentBar) return;` guard never actually ran.  The two
+         `if (IsVolImb...)` statements above it had their bodies commented out,
+         so the compiler attached the *next* statement as the body.  The code
+         really parsed as:
+
+             if (IsVolImbGreen(...))
+                 if (IsVolImbRed(...))
+                     if (!bIsCurrentBar)
+                         return;
+
+         Green and red can never both be true, so the return was dead and the
+         whole Volume Imbalance block below it - alerts included - ran for
+         every bar of the chart on every recalculation.
+
+      3. There was no per-bar de-duplication, so a bar could alert more than
+         once inside a single session.
+
+    All alerts now go through FireAlert(), which refuses to fire during a full
+    recalculation or a history download, and remembers the DateTime of the last
+    bar it alerted on (in a persistent variable) so a given bar can only fire
+    a given alert once.
+    ------------------------------------------------------------------------
+*/
+
 #pragma region COMMON FUNCTIONS
 
 double CandleLength(SCBaseDataRef InData, int index) {
@@ -17,19 +54,17 @@ double PercentOfCandleLength(SCBaseDataRef InData, int index, double percent) {
 }
 
 double PercentOfBodyLength(SCBaseDataRef InData, int index, double percent) {
-    return BodyLength(InData, index) * percent / 100.0;
+    return BodyLength(InData, index) * (percent / 100.0);
 }
 
 double UpperWickLength(SCBaseDataRef InData, int index) {
-    double upperBoundary = max(InData[SC_LAST][index], InData[SC_OPEN][index]);
-    double upperWickLength = InData[SC_HIGH][index] - upperBoundary;
-    return upperWickLength;
+    const double upperBoundary = max(InData[SC_LAST][index], InData[SC_OPEN][index]);
+    return InData[SC_HIGH][index] - upperBoundary;
 }
 
 double LowerWickLength(SCBaseDataRef InData, int index) {
-    double lowerBoundary = min(InData[SC_LAST][index], InData[SC_OPEN][index]);
-    double lowerWickLength = lowerBoundary - InData[SC_LOW][index];
-    return lowerWickLength;
+    const double lowerBoundary = min(InData[SC_LAST][index], InData[SC_OPEN][index]);
+    return lowerBoundary - InData[SC_LOW][index];
 }
 
 bool IsGreen(SCBaseDataRef InData, int index) {
@@ -40,8 +75,11 @@ bool IsRed(SCBaseDataRef InData, int index) {
     return InData[SC_LAST][index] < InData[SC_OPEN][index];
 }
 
-bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent) {
-    return abs(value1 - value2) < (3 * percent); // PercentOfCandleLength(InData, index, percent);
+// FIXED: was taking InData/index it never used, and used abs() on doubles.
+// Tolerance is now an explicit price distance (callers pass 3 * sc.TickSize,
+// which is what the old code worked out to).
+bool IsNearEqual(double value1, double value2, double tolerance) {
+    return fabs(value1 - value2) < tolerance;
 }
 
 bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent) {
@@ -54,204 +92,284 @@ bool IsLowerWickSmall(SCBaseDataRef InData, int index, double percent) {
 
 bool IsBullishEngulfing(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
+
+    if (index < 1)
+        return false;
 
     if (InData[SC_LAST][index - 1] < InData[SC_OPEN][index - 1] && InData[SC_LAST][index] > InData[SC_OPEN][index]) {
         if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
             (InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
             (InData[SC_LAST][index] > InData[SC_OPEN][index - 1]) &&
             (InData[SC_OPEN][index] < InData[SC_LAST][index - 1]))
-            ret_flag = true;
+            return true;
     }
-    return ret_flag;
+
+    return false;
 }
 
 bool IsBearishEngulfing(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
+
+    if (index < 1)
+        return false;
 
     if (InData[SC_LAST][index - 1] > InData[SC_OPEN][index - 1] && InData[SC_LAST][index] < InData[SC_OPEN][index]) {
         if ((InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]) &&
             (InData[SC_LOW][index] < InData[SC_LOW][index - 1]) &&
             (InData[SC_OPEN][index] > InData[SC_LAST][index - 1]) &&
             (InData[SC_LAST][index] < InData[SC_OPEN][index - 1]))
-            ret_flag = true;
+            return true;
     }
 
-    return ret_flag;
+    return false;
 }
 
 bool IsThreeOutsideUp(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsGreen(InData, index) && (InData[SC_LAST][index] > InData[SC_LAST][index - 1])) {
-        if (IsBullishEngulfing(sc, index - 1))
-            ret_flag = true;
-    }
+    if (index < 3)
+        return false;
 
-    return ret_flag;
+    if (IsGreen(InData, index) && (InData[SC_LAST][index] > InData[SC_LAST][index - 1]))
+        return IsBullishEngulfing(sc, index - 1);
+
+    return false;
 }
 
 bool IsThreeOutsideDown(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsRed(InData, index) && (InData[SC_LAST][index] < InData[SC_LAST][index - 1])) {
-        if (IsBearishEngulfing(sc, index - 1))
-            ret_flag = true;
-    }
+    if (index < 3)
+        return false;
 
-    return ret_flag;
+    if (IsRed(InData, index) && (InData[SC_LAST][index] < InData[SC_LAST][index - 1]))
+        return IsBearishEngulfing(sc, index - 1);
+
+    return false;
 }
 
 const int k_Body_NUM_OF_CANDLES = 5; // number of previous candles to calculate body strength
 
+// FIXED: `auto mov_aver{0}` made this an int, so every body length was
+// truncated to a whole number of points - on ES/NQ that is almost always 0.
 inline bool IsBodyStrong(SCBaseDataRef InData, int index) {
-    bool ret_flag = false;
-    auto mov_aver{0};
-    for (int i = 1; i < k_Body_NUM_OF_CANDLES + 1; i++)
-        mov_aver += static_cast<float>(BodyLength(InData, index - i));
+    if (index < k_Body_NUM_OF_CANDLES)
+        return false;
+
+    double mov_aver = 0.0;
+    for (int i = 1; i <= k_Body_NUM_OF_CANDLES; i++)
+        mov_aver += BodyLength(InData, index - i);
     mov_aver /= k_Body_NUM_OF_CANDLES;
 
-    if (BodyLength(InData, index) > mov_aver)
-        ret_flag = true;
-    return ret_flag;
+    return BodyLength(InData, index) > mov_aver;
 }
 
-bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand) {
+// FIXED: was comparing Open[i-1] against Close[i-2], which on continuous
+// futures data is near-identical on almost every bar, so this fired constantly.
+// A tweezer top / "Equal High" needs the two HIGHS to match.
+bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand, double Tolerance) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
-    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize) && InData[
-            SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
-        && IsRed(InData, index) && IsRed(InData, index - 1) && IsGreen(InData, index - 2) && IsGreen(InData, index - 3)
+
+    if (index < 3)
+        return false;
+
+    if (IsNearEqual(InData[SC_HIGH][index - 1], InData[SC_HIGH][index - 2], Tolerance)
+        && InData[SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
+        && IsRed(InData, index) && IsRed(InData, index - 1)
+        && IsGreen(InData, index - 2) && IsGreen(InData, index - 3)
         && (InData[SC_HIGH][index - 1] > UpperBand || InData[SC_HIGH][index - 2] > UpperBand))
-        ret_flag = true;
+        return true;
 
-    return ret_flag;
+    return false;
 }
 
-bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand) {
+// FIXED: same problem as IsTweezerTop - now compares the two LOWS.
+bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand, double Tolerance) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize) && InData[
-            SC_HIGH][index] > InData[SC_HIGH][index - 1] && IsGreen(InData, index) && IsGreen(InData, index - 1) &&
-        IsRed(InData, index - 2) && IsRed(InData, index - 3) && (
-            InData[SC_LOW][index - 1] < LowerBand || InData[SC_LOW][index - 2] < LowerBand))
-        ret_flag = true;
+    if (index < 3)
+        return false;
 
-    return ret_flag;
+    if (IsNearEqual(InData[SC_LOW][index - 1], InData[SC_LOW][index - 2], Tolerance)
+        && InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
+        && IsGreen(InData, index) && IsGreen(InData, index - 1)
+        && IsRed(InData, index - 2) && IsRed(InData, index - 3)
+        && (InData[SC_LOW][index - 1] < LowerBand || InData[SC_LOW][index - 2] < LowerBand))
+        return true;
+
+    return false;
 }
 
-bool IsTrampoline(SCStudyInterfaceRef sc, int index, float rsi, float prsi, float pprsi, float BBBand, int iTickSize) {
+/*
+    FIXED: IsTrampoline() used to contain both the bullish and the bearish test
+    but only accepted ONE band, and it was called twice - once with UpperBand,
+    once with LowerBand.  That meant the bullish test was being run against the
+    upper band (Low[i-2] <= UpperBand is true nearly always) and the bearish
+    test against the lower band (High[i-2] >= LowerBand is true nearly always),
+    so both calls returned true far too often.
+
+    It also declared the tick size parameter as `int`, so passing sc.TickSize
+    (0.25 on ES/NQ) truncated it to 0 and the tick buffer did nothing.
+
+    Split into two functions, each with the band it actually needs.
+*/
+bool IsTrampolineDown(SCStudyInterfaceRef sc, int index, float rsi, float prsi, float pprsi,
+                      float UpperBand, float TickSize) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsRed(InData, index) && IsRed(InData, index - 1) && IsGreen(InData, index - 2) && InData[SC_LAST][index] <
-        InData[SC_LAST][index - 1] && (rsi > 80 || prsi > 80 || pprsi > 80) && InData[SC_HIGH][index - 2] >= (
-            BBBand - (1 * iTickSize)))
-        ret_flag = true;
+    if (index < 2)
+        return false;
 
-    if (IsGreen(InData, index) && IsGreen(InData, index - 1) && IsRed(InData, index - 2) && InData[SC_LAST][index] >
-        InData[SC_LAST][index - 1] && (rsi < 20 || prsi < 20 || pprsi < 20) && InData[SC_LOW][index - 2] <= (
-            BBBand + (1 * iTickSize)))
-        ret_flag = true;
-
-    return ret_flag;
+    return IsRed(InData, index) && IsRed(InData, index - 1) && IsGreen(InData, index - 2)
+           && InData[SC_LAST][index] < InData[SC_LAST][index - 1]
+           && (rsi > 80 || prsi > 80 || pprsi > 80)
+           && InData[SC_HIGH][index - 2] >= (UpperBand - TickSize);
 }
 
+bool IsTrampolineUp(SCStudyInterfaceRef sc, int index, float rsi, float prsi, float pprsi,
+                    float LowerBand, float TickSize) {
+    SCBaseDataRef InData = sc.BaseData;
+
+    if (index < 2)
+        return false;
+
+    return IsGreen(InData, index) && IsGreen(InData, index - 1) && IsRed(InData, index - 2)
+           && InData[SC_LAST][index] > InData[SC_LAST][index - 1]
+           && (rsi < 20 || prsi < 20 || pprsi < 20)
+           && InData[SC_LOW][index - 2] <= (LowerBand + TickSize);
+}
+
+// Placeholder - never implemented, kept so existing references still compile.
 bool IsStairs(SCStudyInterfaceRef sc, int index) {
-    SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
-
-    return ret_flag;
+    return false;
 }
 
 bool IsVolImbGreen(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsGreen(InData, index) && IsGreen(InData, index - 1) && InData[SC_OPEN][index] > InData[SC_LAST][index - 1])
-        ret_flag = true;
+    if (index < 1)
+        return false;
 
-    return ret_flag;
+    return IsGreen(InData, index) && IsGreen(InData, index - 1)
+           && InData[SC_OPEN][index] > InData[SC_LAST][index - 1];
 }
 
 bool IsVolImbRed(SCStudyInterfaceRef sc, int index) {
     SCBaseDataRef InData = sc.BaseData;
-    bool ret_flag = false;
 
-    if (IsRed(InData, index) && IsRed(InData, index - 1) && InData[SC_OPEN][index] < InData[SC_LAST][index - 1])
-        ret_flag = true;
+    if (index < 1)
+        return false;
 
-    return ret_flag;
+    return IsRed(InData, index) && IsRed(InData, index - 1)
+           && InData[SC_OPEN][index] < InData[SC_LAST][index - 1];
 }
 
+// FIXED: abs() on floats can bind to the integer abs() and silently truncate.
+// Using fabs() throughout.
 bool IsDoji(SCBaseDataRef InData, int index) {
-    bool ret_flag = false;
+    const double body = fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]);
 
     if (IsRed(InData, index)) {
-        if (abs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index])
-            &&
-            abs(InData[SC_LAST][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
-            ret_flag = true;
-    } else if (IsGreen(InData, index)) {
-        if (abs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index])
-            &&
-            abs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
-            ret_flag = true;
+        return fabs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > body
+               && fabs(InData[SC_LAST][index] - InData[SC_LOW][index]) > body;
     }
 
-    return ret_flag;
+    if (IsGreen(InData, index)) {
+        return fabs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > body
+               && fabs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > body;
+    }
+
+    return false;
 }
 
-void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int iAboveCandle, int iBuffer) {
-    s_UseTool Tool;
-    int i = sc.Index;
+/*
+    FIXED: this used UTAM_ADD_ALWAYS with no LineNumber, so every single pass of
+    the study stacked another copy of the text on top of the old one.  On a
+    refresh that is one new drawing per matching bar, forever, until the chart
+    is closed.  Now every drawing gets a stable LineNumber derived from the bar
+    it belongs to, and UTAM_ADD_OR_ADJUST updates it in place instead.
 
-    if (txt == "Eq Lo" || txt == "Eq Hi" || txt == "TR")
-        i = sc.Index - 1;
+    Also: the old version positioned the text using one bar index but anchored
+    it with Tool.BeginIndex = sc.CurrentIndex, so "Eq Hi" / "Eq Lo" / "TR" were
+    drawn on the wrong bar.  The bar index is now an explicit parameter.
+*/
+void DrawTextAtBar(SCStudyInterfaceRef sc, SCSubgraphRef Subgraph, const SCString &Text,
+                   int BarIndex, int AboveCandle, int BufferPercent, int DrawingSlot) {
+    if (BarIndex < 0 || BarIndex >= sc.ArraySize)
+        return;
+
+    s_UseTool Tool;
+    Tool.Clear();
 
     Tool.ChartNumber = sc.ChartNumber;
     Tool.DrawingType = DRAWING_TEXT;
-    Tool.BeginIndex = sc.CurrentIndex;
     Tool.Region = sc.GraphRegion;
+    Tool.BeginIndex = BarIndex;
 
-    if (iAboveCandle == 0) // automatic detection
+    // Stable, unique ID per (bar, pattern) so the drawing is replaced, not duplicated.
+    Tool.LineNumber = (BarIndex * 8) + DrawingSlot;
+    Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+
+    if (AboveCandle == 0) // automatic detection
     {
-        if (sc.Close[i] > sc.Open[i]) // green candle
-            iAboveCandle = 1;
+        if (sc.Close[BarIndex] > sc.Open[BarIndex]) // green candle
+            AboveCandle = 1;
         else
-            iAboveCandle = -1;
+            AboveCandle = -1;
     }
 
-    if (iAboveCandle == 1) {
-        Tool.BeginValue = sc.High[i] + ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
+    const float CandleRange = sc.High[BarIndex] - sc.Low[BarIndex];
+
+    if (AboveCandle == 1) {
+        Tool.BeginValue = sc.High[BarIndex] + (CandleRange * BufferPercent * 0.01f);
         Tool.TextAlignment = DT_CENTER | DT_BOTTOM;
-    } else if (iAboveCandle == -1) {
-        Tool.BeginValue = sc.Low[i] - ((sc.High[i] - sc.Low[i]) * iBuffer * 0.01f);
+    } else {
+        Tool.BeginValue = sc.Low[BarIndex] - (CandleRange * BufferPercent * 0.01f);
         Tool.TextAlignment = DT_CENTER | DT_TOP;
     }
 
-    Tool.Color = screffy.PrimaryColor;
-    Tool.FontBackColor = screffy.SecondaryColor;
-    if (txt == "TR")
+    Tool.Color = Subgraph.PrimaryColor;
+    Tool.FontBackColor = Subgraph.SecondaryColor;
+    if (Text == "TR")
         Tool.FontBackColor = COLOR_RED;
-    Tool.FontSize = screffy.LineWidth;
+    Tool.FontSize = Subgraph.LineWidth;
     Tool.FontBold = TRUE;
-    Tool.Text.Format("%s", txt.GetChars());
-    Tool.AddMethod = UTAM_ADD_ALWAYS;
+    Tool.Text = Text;
 
     sc.UseTool(Tool);
 }
 
 #pragma endregion
 
+#pragma region PERSISTENT STORAGE SLOTS
+
+// Persistent ints
+const int PI_SQUEEZE_STATE = 0;
+
+// Persistent doubles - each holds the DateTime of the last bar that fired that
+// alert, so the same bar can never fire the same alert twice.
+const int PD_ALERT_BUY = 1;
+const int PD_ALERT_SELL = 2;
+const int PD_ALERT_KAMA_WICK = 3;
+const int PD_ALERT_TRAMP_UP = 4;
+const int PD_ALERT_TRAMP_DOWN = 5;
+const int PD_ALERT_BBGAP_GREEN = 6;
+const int PD_ALERT_BBGAP_RED = 7;
+const int PD_ALERT_VOLIMB_GREEN = 8;
+const int PD_ALERT_VOLIMB_RED = 9;
+const int PD_ALERT_VOLIMB_FILL = 10;
+
+// Drawing slots (must stay below 8 - see DrawTextAtBar LineNumber maths)
+const int DRAWSLOT_3OU = 1;
+const int DRAWSLOT_3OD = 2;
+const int DRAWSLOT_EQHI = 3;
+const int DRAWSLOT_EQLO = 4;
+const int DRAWSLOT_TRAMP = 5;
+
+#pragma endregion
+
 SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 #pragma region INPUTS
-
-    SCString txt;
 
     SCInputRef Input_WaddahIntensity = sc.Input[0];
 
@@ -274,6 +392,10 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     SCInputRef Input_DownOffset = sc.Input[15];
     SCInputRef Input_ShavedBuffer = sc.Input[16];
     SCInputRef Input_DojiCity = sc.Input[17];
+
+    // Master on/off switch for every alert this study can raise.
+    // Deliberately placed at the end so slots 0-17 keep their saved values.
+    SCInputRef Input_EnableAlerts = sc.Input[18];
 
     SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
     SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];
@@ -305,8 +427,8 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     SCSubgraphRef Subgraph_HMA = sc.Subgraph[26];
     SCSubgraphRef Subgraph_Calc = sc.Subgraph[27];
     SCSubgraphRef Subgraph_MomentumHist = sc.Subgraph[28];
-    SCSubgraphRef Subgraph_MomentumHistUpColors = sc.Subgraph[29];
-    SCSubgraphRef Subgraph_MomentumHistDownColors = sc.Subgraph[30];
+    SCSubgraphRef Subgraph_MomentumBasis = sc.Subgraph[29]; // was Subgraph_MomentumHistUpColors
+    SCSubgraphRef Subgraph_MomentumSource = sc.Subgraph[30]; // was Subgraph_MomentumHistDownColors
     SCSubgraphRef Subgraph_SuperTrend = sc.Subgraph[31];
     SCSubgraphRef Subgraph_Intersection = sc.Subgraph[32];
     SCSubgraphRef Subgraph_BBGreen = sc.Subgraph[33];
@@ -316,9 +438,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     SCSubgraphRef Subgraph_DojiCity = sc.Subgraph[37];
     SCSubgraphRef Subgraph_HullATR = sc.Subgraph[38];
     // Volume Imbalance tracking
-    SCSubgraphRef Subgraph_VolImbOriginCandle = sc.Subgraph[43];
     SCSubgraphRef Subgraph_VolImbDirection = sc.Subgraph[41];
     SCSubgraphRef Subgraph_VolImbPrice = sc.Subgraph[42];
+    SCSubgraphRef Subgraph_VolImbOriginCandle = sc.Subgraph[43];
 
     SCFloatArrayRef Array_TrueRange = Subgraph_SuperTrend.Arrays[0];
     SCFloatArrayRef Array_AvgTrueRange = Subgraph_SuperTrend.Arrays[1];
@@ -327,8 +449,10 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     SCFloatArrayRef Array_UpperBand = Subgraph_SuperTrend.Arrays[4];
     SCFloatArrayRef Array_LowerBand = Subgraph_SuperTrend.Arrays[5];
 
-    COLORREF UpColor = Subgraph_ColorUp.PrimaryColor;
-    COLORREF DownColor = Subgraph_ColorDown.PrimaryColor;
+    // FIXED: the Fisher Transform intermediate used to live in
+    // Subgraph_Calc.Arrays[0], but sc.RSI() also writes into Subgraph_Calc's
+    // internal arrays.  The two were overwriting each other every bar.
+    SCFloatArrayRef Array_FisherValue = Subgraph_Fisher.Arrays[0];
 
 #pragma endregion
 
@@ -375,7 +499,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Input_DownOffset.Name = "Down Offset In Ticks";
         Input_DownOffset.SetInt(2);
 
-        Input_ShavedBuffer.Name = "Shaved candle buffer";
+        Input_ShavedBuffer.Name = "Shaved candle buffer (ticks)";
         Input_ShavedBuffer.SetInt(1);
 
         Input_BarColor.Name = "Bar coloring";
@@ -390,16 +514,23 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 
         Input_IgnoreDoji.Name = "Ignore Dojis";
         Input_IgnoreDoji.SetYesNo(1);
-        Input_IgnoreDoji.SetDescription("Ignore when wicks are larger than candle body");
+        Input_IgnoreDoji.SetDescription("Suppress buy/sell dots when wicks are larger than the candle body");
 
         Input_DojiCity.Name = "Show Doji Cities";
         Input_DojiCity.SetYesNo(1);
+
+        Input_EnableAlerts.Name = "Enable Alerts";
+        Input_EnableAlerts.SetYesNo(1);
+        Input_EnableAlerts.SetDescription(
+            "Master switch. Set to No to silence every alert and alert log message from this study. "
+            "Dots, arrows, text and bar colouring are unaffected.");
 
         // =======================================================================
 
         Subgraph_ColorBar.Name = "Bar Color";
         Subgraph_ColorBar.DrawStyle = DRAWSTYLE_COLOR_BAR;
         Subgraph_ColorBar.LineWidth = 1;
+        Subgraph_ColorBar.DrawZeros = false;
 
         Subgraph_ColorUp.Name = "Bar Color Up";
         Subgraph_ColorUp.PrimaryColor = RGB(0, 255, 0);
@@ -458,36 +589,42 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_DojiCity.DrawStyle = DRAWSTYLE_BACKGROUND;
         Subgraph_DojiCity.PrimaryColor = RGB(27, 25, 94);
         Subgraph_DojiCity.LineWidth = 1;
+        Subgraph_DojiCity.DrawZeros = false;
 
         Subgraph_3oU.Name = "Three Outside Up";
         Subgraph_3oU.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
         Subgraph_3oU.PrimaryColor = RGB(255, 255, 29);
         Subgraph_3oU.SecondaryColor = RGB(1, 97, 3);
         Subgraph_3oU.LineWidth = 8;
+        Subgraph_3oU.DrawZeros = false;
 
         Subgraph_3oD.Name = "Three Outside Down";
         Subgraph_3oD.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
         Subgraph_3oD.PrimaryColor = RGB(255, 255, 29);
         Subgraph_3oD.SecondaryColor = RGB(97, 1, 1);
         Subgraph_3oD.LineWidth = 8;
+        Subgraph_3oD.DrawZeros = false;
 
         Subgraph_EqualH.Name = "Equal High";
         Subgraph_EqualH.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
         Subgraph_EqualH.PrimaryColor = RGB(255, 255, 29);
         Subgraph_EqualH.SecondaryColor = RGB(97, 1, 1);
         Subgraph_EqualH.LineWidth = 8;
+        Subgraph_EqualH.DrawZeros = false;
 
         Subgraph_EqualL.Name = "Equal Low";
         Subgraph_EqualL.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
         Subgraph_EqualL.PrimaryColor = RGB(255, 255, 29);
         Subgraph_EqualL.SecondaryColor = RGB(1, 97, 3);
         Subgraph_EqualL.LineWidth = 8;
+        Subgraph_EqualL.DrawZeros = false;
 
         Subgraph_Tramp.Name = "Trampoline";
         Subgraph_Tramp.DrawStyle = DRAWSTYLE_CUSTOM_TEXT;
         Subgraph_Tramp.PrimaryColor = RGB(0, 0, 0);
         Subgraph_Tramp.SecondaryColor = RGB(169, 205, 252);
         Subgraph_Tramp.LineWidth = 8;
+        Subgraph_Tramp.DrawZeros = false;
 
         Subgraph_BBGreen.Name = "Engulfing Green BB";
         Subgraph_BBGreen.PrimaryColor = RGB(0, 64, 0);
@@ -522,17 +659,20 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_HMA.Name = "Hull Moving Average";
         Subgraph_HMA.DrawStyle = DRAWSTYLE_IGNORE;
 
+        Subgraph_HullATR.Name = "Hull ATR (SuperTrend)";
+        Subgraph_HullATR.DrawStyle = DRAWSTYLE_IGNORE;
+
         Subgraph_Calc.Name = "RSI";
         Subgraph_Calc.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_MomentumHist.Name = "Squeeze Relaxer 1";
+        Subgraph_MomentumHist.Name = "Squeeze Relaxer Histogram";
         Subgraph_MomentumHist.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_MomentumHistUpColors.Name = "Squeeze Relaxer 2";
-        Subgraph_MomentumHistUpColors.DrawStyle = DRAWSTYLE_IGNORE;
+        Subgraph_MomentumBasis.Name = "Squeeze Relaxer EMA";
+        Subgraph_MomentumBasis.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_MomentumHistDownColors.Name = "Squeeze Relaxer 3";
-        Subgraph_MomentumHistDownColors.DrawStyle = DRAWSTYLE_IGNORE;
+        Subgraph_MomentumSource.Name = "Squeeze Relaxer Source";
+        Subgraph_MomentumSource.DrawStyle = DRAWSTYLE_IGNORE;
 
         Subgraph_BB.Name = "Bollinger Bands";
         Subgraph_BB.DrawStyle = DRAWSTYLE_IGNORE;
@@ -540,7 +680,8 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_AO.Name = "Awesome Oscillator";
         Subgraph_AO.DrawStyle = DRAWSTYLE_IGNORE;
 
-        Subgraph_Fisher.Name = "Awesome Oscillator";
+        // FIXED: was also named "Awesome Oscillator" (copy/paste)
+        Subgraph_Fisher.Name = "Fisher Transform";
         Subgraph_Fisher.DrawStyle = DRAWSTYLE_IGNORE;
 
         Subgraph_ADX.Name = "ADX";
@@ -572,19 +713,20 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_VolImbOriginCandle.DrawZeros = false;
         Subgraph_VolImbDirection.Name = "VolImb Direction";
         Subgraph_VolImbDirection.DrawStyle = DRAWSTYLE_IGNORE;
+        Subgraph_VolImbDirection.DrawZeros = false;
         Subgraph_VolImbPrice.Name = "VolImb Price";
         Subgraph_VolImbPrice.DrawStyle = DRAWSTYLE_IGNORE;
+        Subgraph_VolImbPrice.DrawZeros = false;
 
         return;
     }
 
 #pragma endregion
 
-#pragma region LOCAL VARIABLES
+#pragma region ALERT NUMBERS
 
-    int ALERT_EMERGENCY = 30;
-    int ALERT_EMA21_WICK = 12;
-    int ALERT_KAMA = 13;
+    int ALERT_EMERGENCY = 30; // currently unused
+    int ALERT_EMA21_WICK = 12; // currently unused
     int ALERT_KAMA_WICK = 13;
 
     int ALERT_BUY = 5;
@@ -594,8 +736,9 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     int ALERT_VOLIMB_GREEN = 17;
     int ALERT_VOLIMB_RED = 17;
     int ALERT_VOLIMB_FILL = 19;
-    int ALERT_TRAMP_GREEN = 23;
-    int ALERT_TRAMP_RED = 24;
+    int ALERT_TRAMP_UP = 23;
+    int ALERT_TRAMP_DOWN = 24;
+
     if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
         ALERT_BUY = 7;
         ALERT_SELL = 8;
@@ -604,89 +747,153 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         ALERT_VOLIMB_GREEN = 18;
         ALERT_VOLIMB_RED = 18;
         ALERT_VOLIMB_FILL = 20;
-        ALERT_TRAMP_GREEN = 23;
-        ALERT_TRAMP_RED = 24;
-    } else if (strstr(sc.Symbol.GetChars(), "ES") != NULL) {
-    } else {
+        ALERT_TRAMP_UP = 23;
+        ALERT_TRAMP_DOWN = 24;
     }
+
+#pragma endregion
+
+#pragma region LOCAL VARIABLES
+
+    SCString txt;
 
     const int i = sc.Index;
-    auto &r_SqueezeUp{sc.GetPersistentInt(0)};
-    auto cl{sc.GetBarHasClosedStatus(i)}; // BHCS_BAR_HAS_NOT_CLOSED
-    SCBaseDataRef in = sc.BaseData;
-    auto close{sc.Close[i]};
-    auto open{sc.Open[i]};
-    auto high{sc.High[i]};
-    auto low{sc.Low[i]};
-    auto pclose{sc.Close[i - 1]};
-    auto popen{sc.Open[i - 1]};
-    auto phigh{sc.High[i - 1]};
-    auto plow{sc.Low[i - 1]};
-    auto body{abs(open - close)};
-    auto pbody{abs(popen - pclose)};
-    bool red = open > close;
-    bool green = open < close;
+
+    // Longest lookback in play: the 40 period EMA, plus a few bars of pattern
+    // history.  Below this the indicators are still warming up.
+    const int MinimumRequiredBars = 45;
+    sc.DataStartIndex = MinimumRequiredBars;
+
+    int &r_SqueezeUp = sc.GetPersistentInt(PI_SQUEEZE_STATE);
+
+    // FIXED: persistent state used to carry over into a recalculation, so a
+    // refresh produced different squeeze marks than the live run.  Reset it at
+    // the start of every pass over the chart.
+    if (i == 0)
+        r_SqueezeUp = 0;
+
+    const float close = sc.Close[i];
+    const float open = sc.Open[i];
+    const float high = sc.High[i];
+    const float low = sc.Low[i];
+    const float pclose = sc.Close[i - 1];
+    const float popen = sc.Open[i - 1];
+    const float phigh = sc.High[i - 1];
+    const float plow = sc.Low[i - 1];
+
+    // FIXED: these were all `auto x{0}`, i.e. INTEGERS.  Every wick and body
+    // length was being truncated to whole points, which on ES/NQ (0.25 tick)
+    // meant most of them rounded to 0 and the doji test was meaningless.
+    const double body = fabs(open - close);
+    const double pbody = fabs(popen - pclose);
+
+    const bool red = open > close;
+    const bool green = open < close;
+
+    double upperwick = 0.0;
+    double lowerwick = 0.0;
     bool pdoji = false;
-    auto upperwick{0};
-    auto lowerwick{0};
+
     if (green) {
-        upperwick = abs(high - close);
-        lowerwick = abs(open - low);
-        pdoji = abs(phigh - pclose) > pbody && abs(popen - plow) > body;
+        upperwick = fabs(high - close);
+        lowerwick = fabs(open - low);
+        pdoji = fabs(phigh - pclose) > pbody && fabs(popen - plow) > pbody; // FIXED: was comparing against `body`
     } else // red
     {
-        upperwick = abs(high - open);
-        lowerwick = abs(close - low);
-        pdoji = abs(phigh - popen) > pbody && abs(pclose - plow) > body;
+        upperwick = fabs(high - open);
+        lowerwick = fabs(close - low);
+        pdoji = fabs(phigh - popen) > pbody && fabs(pclose - plow) > pbody; // FIXED: was comparing against `body`
     }
-    bool doji = upperwick > body && lowerwick > body;
-    SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
-    SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
-    auto &PreviousLineCount = sc.GetPersistentInt(1);
-    auto CurrentLineCount = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
-    static const int NotYetInitialized = -1;
-    auto &IsInitialized = sc.GetPersistentInt(2);
-    int &LastProcessedIndex = sc.GetPersistentInt(3);
-    auto AlreadyAlertedBar{0};
-    // int X = sc.BarIndexToXPixelCoordinate(i);
-    // int Y = sc.BarIndexToRelativeHorizontalCoordinate(i, false);
-    bool bIsCurrentBar = false;
-    bool sqRelaxUp;
-    bool bSuperUp;
 
-    if (i == sc.ArraySize - 2)
-        bIsCurrentBar = true;
+    const bool doji = upperwick > body && lowerwick > body;
+
+    SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
+
+    bool bSuperUp = false;
+
+    // The "current bar" for signalling purposes is the most recently CLOSED
+    // bar, not the one still forming.
+    const bool bIsLastClosedBar = (i == sc.ArraySize - 2);
+    const bool bBarClosed = (sc.GetBarHasClosedStatus(i) == BHCS_BAR_HAS_CLOSED);
+
+#pragma endregion
+
+#pragma region ALERT GATE
+
+    /*
+        THIS IS THE FIX FOR THE REPEATED ALERTS.
+
+        Input_EnableAlerts          -> master on/off switch in study settings
+        sc.IsFullRecalculation      -> set while SC is reprocessing the whole
+                                       chart (refresh, reload, INS key, changing
+                                       a study setting, adding the study, ...)
+        sc.DownloadingHistoricalData-> set while history is being back-filled
+        sc.UpdateStartIndex == 0    -> belt and braces, also means "whole chart"
+
+        None of those are live ticks, so none of them should make noise.
+    */
+    const bool bAlertsAllowed =
+            Input_EnableAlerts.GetYesNo() == SC_YES
+            && bIsLastClosedBar
+            && sc.IsFullRecalculation == 0
+            && sc.DownloadingHistoricalData == 0
+            && sc.UpdateStartIndex != 0;
+
+    const double BarDateTime = sc.BaseDateTimeIn[i].GetAsDouble();
+
+    // Fires an alert at most once per bar, per alert channel.
+    // Pass AlertNumber = 0 to write to the message log without playing a sound.
+    // When "Enable Alerts" is set to No this does nothing at all - no sound and
+    // no log entry. If you would rather keep the log entries when alerts are
+    // switched off, move the Input_EnableAlerts test out of bAlertsAllowed and
+    // put it around the sc.AlertWithMessage call below instead.
+    auto FireAlert = [&](int PersistentSlot, int AlertNumber, const char *Message) {
+        if (!bAlertsAllowed)
+            return;
+
+        double &r_LastAlertedBarTime = sc.GetPersistentDouble(PersistentSlot);
+        if (r_LastAlertedBarTime == BarDateTime)
+            return; // this bar already fired this alert
+
+        r_LastAlertedBarTime = BarDateTime;
+
+        sc.AddMessageToLog(Message, 1);
+
+        if (AlertNumber > 0)
+            sc.AlertWithMessage(AlertNumber, Message);
+    };
 
 #pragma endregion
 
 #pragma region INDICATORS
 
-    //	for (int i = sc.UpdateStartIndex; i < sc.ArraySize; i++)
-    {
-        // SUPER TREND
-        int ATRMultiplier = 2;
-        int ATRPeriod = 11;
+    // SUPER TREND
+    const int ATRMultiplier = 2;
+    const int ATRPeriod = 11;
 
-        sc.TrueRange(sc.BaseDataIn, Array_TrueRange);
-        sc.HullMovingAverage(Array_TrueRange, Subgraph_HullATR, ATRPeriod);
-        Array_AvgTrueRange[i] = Subgraph_HullATR[i];
+    sc.TrueRange(sc.BaseDataIn, Array_TrueRange);
+    sc.HullMovingAverage(Array_TrueRange, Subgraph_HullATR, ATRPeriod);
+    Array_AvgTrueRange[i] = Subgraph_HullATR[i];
 
-        Array_UpperBandBasic[i] = sc.BaseDataIn[SC_HL][i] + ATRMultiplier * Array_AvgTrueRange[i];
-        Array_LowerBandBasic[i] = sc.BaseDataIn[SC_HL][i] - ATRMultiplier * Array_AvgTrueRange[i];
+    Array_UpperBandBasic[i] = sc.BaseDataIn[SC_HL][i] + ATRMultiplier * Array_AvgTrueRange[i];
+    Array_LowerBandBasic[i] = sc.BaseDataIn[SC_HL][i] - ATRMultiplier * Array_AvgTrueRange[i];
 
-        // Calculate Upper and Lower Bands
+    if (i == 0) {
+        Array_UpperBand[i] = Array_UpperBandBasic[i];
+        Array_LowerBand[i] = Array_LowerBandBasic[i];
+        Subgraph_SuperTrend[i] = Array_UpperBand[i];
+    } else {
         if (Array_UpperBandBasic[i] < Array_UpperBand[i - 1] || sc.Close[i - 1] > Array_UpperBand[i - 1])
             Array_UpperBand[i] = Array_UpperBandBasic[i];
         else
             Array_UpperBand[i] = Array_UpperBand[i - 1];
 
+        // FIXED: this read Array_LowerBandBasic[i - 1] where the upper band
+        // branch reads [i].  Off-by-one, the lower band lagged by a bar.
         if (Array_LowerBandBasic[i] > Array_LowerBand[i - 1] || sc.Close[i - 1] < Array_LowerBand[i - 1])
-            Array_LowerBand[i] = Array_LowerBandBasic[i - 1];
+            Array_LowerBand[i] = Array_LowerBandBasic[i];
         else
             Array_LowerBand[i] = Array_LowerBand[i - 1];
-
-        if (i == 0)
-            Subgraph_SuperTrend[i] = Array_UpperBand[i];
 
         if (Subgraph_SuperTrend[i - 1] == Array_UpperBand[i - 1] && sc.Close[i] < Array_UpperBand[i])
             Subgraph_SuperTrend[i] = Array_UpperBand[i];
@@ -698,456 +905,400 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             Subgraph_SuperTrend[i] = Array_UpperBand[i];
         else
             Subgraph_SuperTrend[i] = Subgraph_SuperTrend[i - 1];
+    }
 
-        if (Subgraph_SuperTrend[i] == Array_UpperBand[i])
-            bSuperUp = false;
-        else
-            bSuperUp = true;
+    bSuperUp = (Subgraph_SuperTrend[i] != Array_UpperBand[i]);
 
-        // SQUEEZE RELAXER
-        sc.DataStartIndex = 20;
-        sc.ExponentialMovAvg(sc.Close, Subgraph_MomentumHistUpColors, 20);
-        // Note: EMA returns close when index is < HistogramLenSecondData.GetInt()
-        sc.MovingAverage(sc.Close, Subgraph_MomentumHistUpColors, MOVAVGTYPE_EXPONENTIAL, 20);
+    /*
+        SQUEEZE RELAXER
 
-        float hlh = sc.GetHighest(sc.High, 20);
-        float lll = sc.GetLowest(sc.Low, 20);
+        FIXED: the old code called three different moving averages into the SAME
+        output subgraph.  Because ACSIL moving averages read their own previous
+        output value when they run inside AutoLoop, overwriting the array with a
+        different MA corrupted the next bar's recursion.  It also ran the EMA
+        twice (once via sc.ExponentialMovAvg, once via sc.MovingAverage) and
+        computed a linear regression whose result was never read.
+    */
+    sc.ExponentialMovAvg(sc.Close, Subgraph_MomentumBasis, 20);
 
-        Subgraph_MomentumHistDownColors[sc.Index] =
-                sc.Open[sc.Index] - ((hlh + lll) / 2.0f + Subgraph_MomentumHistUpColors[sc.Index]) / 2.0f;
-        sc.LinearRegressionIndicator(Subgraph_MomentumHistDownColors, Subgraph_MomentumHist, 20);
-        sc.MovingAverage(sc.Close, Subgraph_MomentumHistUpColors, MOVAVGTYPE_LINEARREGRESSION, 20);
+    const float hlh = sc.GetHighest(sc.High, 20);
+    const float lll = sc.GetLowest(sc.Low, 20);
 
-        if ((Subgraph_MomentumHist[i] <= 0) && (Subgraph_MomentumHist[i] > Subgraph_MomentumHist[i - 1])) {
-            if (r_SqueezeUp == 0) {
-                Subgraph_SqueezeUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
-                Subgraph_SqueezeDown[i] = 0;
-                r_SqueezeUp = 1;
-            }
-        } else if ((Subgraph_MomentumHist[i] >= 0) && (Subgraph_MomentumHist[i] < Subgraph_MomentumHist[i - 1])) {
-            if (r_SqueezeUp == 1) {
-                Subgraph_SqueezeDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
-                Subgraph_SqueezeUp[i] = 0;
-                r_SqueezeUp = 0;
-            }
+    Subgraph_MomentumSource[i] = sc.Open[i] - ((hlh + lll) / 2.0f + Subgraph_MomentumBasis[i]) / 2.0f;
+    sc.LinearRegressionIndicator(Subgraph_MomentumSource, Subgraph_MomentumHist, 20);
+
+    if ((Subgraph_MomentumHist[i] <= 0) && (Subgraph_MomentumHist[i] > Subgraph_MomentumHist[i - 1])) {
+        if (r_SqueezeUp == 0) {
+            Subgraph_SqueezeUp[i] = sc.Low[i] - (Input_UpOffset.GetInt() * sc.TickSize);
+            Subgraph_SqueezeDown[i] = 0;
+            r_SqueezeUp = 1;
         }
+    } else if ((Subgraph_MomentumHist[i] >= 0) && (Subgraph_MomentumHist[i] < Subgraph_MomentumHist[i - 1])) {
+        if (r_SqueezeUp == 1) {
+            Subgraph_SqueezeDown[i] = sc.High[i] + (Input_DownOffset.GetInt() * sc.TickSize);
+            Subgraph_SqueezeUp[i] = 0;
+            r_SqueezeUp = 0;
+        }
+    }
 
-        // FISHER TRANSFORM
-        float Highest = sc.GetHighest(Price, 10);
-        float Lowest = sc.GetLowest(Price, 10);
-        float Range = Highest - Lowest;
+    // FISHER TRANSFORM
+    const float Highest = sc.GetHighest(Price, 10);
+    const float Lowest = sc.GetLowest(Price, 10);
+    const float Range = Highest - Lowest;
 
-        if (Range == 0)
-            Array_Value[i] = 0;
-        else
-            Array_Value[i] = .66f * ((Price[i] - Lowest) / Range - 0.5f) + 0.67f * Array_Value[i - 1];
+    if (Range == 0)
+        Array_FisherValue[i] = 0;
+    else
+        Array_FisherValue[i] = .66f * ((Price[i] - Lowest) / Range - 0.5f) + 0.67f * Array_FisherValue[i - 1];
 
-        float TruncValue = Array_Value[i];
+    float TruncValue = Array_FisherValue[i];
 
-        if (TruncValue > .99f)
-            TruncValue = .999f;
-        else if (TruncValue < -.99f)
-            TruncValue = -.999f;
+    if (TruncValue > .99f)
+        TruncValue = .999f;
+    else if (TruncValue < -.99f)
+        TruncValue = -.999f;
 
-        float fish = .5f * (log((1 + TruncValue) / (1 - TruncValue)) + Subgraph_Fisher[i - 1]);
+    // FIXED: the result used to be assigned to a plain local, so
+    // Subgraph_Fisher[i - 1] was always 0 and the recursive half of the Fisher
+    // Transform never happened.  Store it back into the subgraph.
+    Subgraph_Fisher[i] = .5f * (log((1 + TruncValue) / (1 - TruncValue)) + Subgraph_Fisher[i - 1]);
+    const float fish = Subgraph_Fisher[i];
 
-        // int data_type_indx = (int)Input_InputData.GetInputDataIndex();
-        // SCFloatArrayRef in = sc.BaseDataIn[data_type_indx];
-        // SCDateTimeArrayRef ti = sc.BaseDateTimeIn[data_type_indx];
+    sc.AdaptiveMovAvg(sc.BaseDataIn[SC_LAST], Subgraph_KAMA, 9, 2, 109);
+    const float kama = Subgraph_KAMA[i];
 
-        sc.AdaptiveMovAvg(sc.BaseDataIn[SC_LAST], Subgraph_KAMA, 9, 2, 109);
-        float kama = Subgraph_KAMA[i];
+    sc.T3MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_T3, 0.84f, 10);
+    const float t3 = Subgraph_T3[i];
 
-        sc.T3MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_T3, 0.84, 10);
-        float t3 = Subgraph_T3[i];
+    sc.ADX(sc.BaseDataIn, Subgraph_ADX, i, 14, 14);
+    const float adx = Subgraph_ADX[i];
 
-        sc.ADX(sc.BaseDataIn, Subgraph_ADX, i, 14, 14);
-        float adx = Subgraph_ADX[i];
+    sc.AwesomeOscillator(sc.BaseDataIn[SC_LAST], Subgraph_AO, 0, 0);
+    const float ao = Subgraph_AO[i];
 
-        sc.AwesomeOscillator(sc.BaseDataIn[SC_LAST], Subgraph_AO, 0, 0);
-        float ao = Subgraph_AO[i];
+    sc.HullMovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_HMA, 10);
+    const float hma = Subgraph_HMA[i];
 
-        sc.HullMovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_HMA, 10);
-        float hma = Subgraph_HMA[i];
-        float phma = Subgraph_HMA[i - 1];
+    sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Fast, MOVAVGTYPE_EXPONENTIAL, 20);
+    const float a1 = Subgraph_Fast[i];
+    const float b1 = Subgraph_Fast[i - 1];
 
-        sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Fast, MOVAVGTYPE_EXPONENTIAL, 20);
-        float a1 = Subgraph_Fast[i];
-        float b1 = Subgraph_Fast[i - 1];
+    sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Slow, MOVAVGTYPE_EXPONENTIAL, 40);
+    const float a2 = Subgraph_Slow[i];
+    const float b2 = Subgraph_Slow[i - 1];
 
-        sc.MovingAverage(sc.BaseDataIn[SC_LAST], Subgraph_Slow, MOVAVGTYPE_EXPONENTIAL, 40);
-        float a2 = Subgraph_Slow[i];
-        float b2 = Subgraph_Slow[i - 1];
+    sc.BollingerBands(sc.BaseDataIn[SC_LAST], Subgraph_BB, 20, 2, MOVAVGTYPE_SIMPLE);
+    const float UpperBand = Subgraph_BB.Arrays[0][i];
+    const float LowerBand = Subgraph_BB.Arrays[1][i];
+    const float pUpperBand = Subgraph_BB.Arrays[0][i - 1];
+    const float pLowerBand = Subgraph_BB.Arrays[1][i - 1];
 
-        sc.BollingerBands(sc.BaseDataIn[SC_LAST], Subgraph_BB, 20, 2, MOVAVGTYPE_SIMPLE);
-        float UpperBand = Subgraph_BB.Arrays[0][i];
-        float LowerBand = Subgraph_BB.Arrays[1][i];
-        float e1 = UpperBand - LowerBand;
+    const float t1 = ((a1 - a2) - (b1 - b2)) * Input_WaddahIntensity.GetInt();
 
-        float t1 = ((a1 - a2) - (b1 - b2)) * Input_WaddahIntensity.GetInt();
+    sc.MACD(sc.BaseDataIn[SC_LAST], Subgraph_LindaMACD, 3, 9, 16, MOVAVGTYPE_SIMPLE);
+    const float linda = Subgraph_LindaMACD.Arrays[3][i];
 
-        sc.MACD(sc.BaseDataIn[SC_LAST], Subgraph_LindaMACD, 3, 9, 16, MOVAVGTYPE_SIMPLE);
-        float linda = Subgraph_LindaMACD.Arrays[3][i];
+    sc.Parabolic(sc.BaseDataIn, sc.BaseDateTimeIn, Subgraph_Parabolic, i, 0.02f, 0.02f, 0.2f, 0, SC_HIGH, SC_LOW);
+    const float SAR = Subgraph_Parabolic[i];
 
-        sc.Parabolic(sc.BaseDataIn, sc.BaseDateTimeIn, Subgraph_Parabolic, i, 0.02f, 0.02f, 0.2f, 0, SC_HIGH, SC_LOW);
-        float SAR = Subgraph_Parabolic[i];
-
-        sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_Calc, MOVAVGTYPE_SIMPLE, 14);
-        float rsi = Subgraph_Calc[i];
-        float prsi = Subgraph_Calc[i - 1];
-        float pprsi = Subgraph_Calc[i - 2];
+    sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_Calc, MOVAVGTYPE_SIMPLE, 14);
+    const float rsi = Subgraph_Calc[i];
+    const float prsi = Subgraph_Calc[i - 1];
+    const float pprsi = Subgraph_Calc[i - 2];
 
 #pragma endregion
 
-        SCFloatArray SubgraphArray;
-        sc.GetStudyArray(11, 3, SubgraphArray);
-        //if (SubgraphArray.GetArraySize() == 0)
+    // Everything above has to run on every bar so the recursive indicators build
+    // correctly.  Everything below is signalling, and needs warmed-up data.
+    if (i < MinimumRequiredBars)
+        return;
 
-        if (Input_IgnoreDoji.GetYesNo() == SC_YES && doji)
-            return;
+#pragma region PER BAR RESETS
 
-        if (red && close == low)
-            Subgraph_ShavedRed[i] = 1;
-        if (low < LowerBand && plow < LowerBand && green && body > pbody)
-            Subgraph_BBGreen[i] = 1;
-        if (high > UpperBand && phigh > UpperBand && red && body > pbody)
-            Subgraph_BBRed[i] = 1;
+    // FIXED: none of these were being cleared.  On the bar that is still
+    // forming, a dot or a background painted on an earlier tick stayed on the
+    // chart even after price moved and the condition stopped being true.
+    Subgraph_DotUp[i] = 0;
+    Subgraph_DotDown[i] = 0;
+    Subgraph_ShavedRed[i] = 0;
+    Subgraph_ShavedGreen[i] = 0;
+    Subgraph_BBGreen[i] = 0;
+    Subgraph_BBRed[i] = 0;
+    Subgraph_3oU[i] = 0;
+    Subgraph_3oD[i] = 0;
+    Subgraph_EqualH[i] = 0;
+    Subgraph_EqualL[i] = 0;
+    Subgraph_Tramp[i] = 0;
+    Subgraph_VolImbUp[i] = 0;
+    Subgraph_VolImbDown[i] = 0;
+    Subgraph_VolImbOriginCandle[i] = 0;
+    Subgraph_VolImbDirection[i] = 0;
+    Subgraph_VolImbPrice[i] = 0;
 
-        static bool dataLoaded = false;
-        bool bBarClosed = (sc.GetBarHasClosedStatus() == BHCS_BAR_HAS_CLOSED);
+#pragma endregion
 
-#pragma region EXTRA ALERTS
-        /*
-                if (false) {
-                    // Detect volimb line close
-                    auto iEndings{0};
-                    const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
-                    if (numLines != 0) {
-                        for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex) {
-                            int32_t lineID{0};
-                            int32_t startIndex{0};
-                            int32_t endIndex{0};
-                            float lineValue{0.0f};
+#pragma region CANDLE MARKINGS
 
-                            if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex))
-                            {
-                                if (endIndex > 0) {
-                                    iEndings++;
-                                    DrawText(sc, Subgraph_3oU, "shit", 0, 5);
-                                    //sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
-                                    Subgraph_Intersection[i] = endIndex;
-                                }
-                            }
-                        }
-                    }
-                    Subgraph_Intersection[i] = iEndings;
+    // FIXED: Input_ShavedBuffer existed but was never used, and the green side
+    // was never implemented at all even though the subgraph is configured.
+    const float ShavedBuffer = Input_ShavedBuffer.GetInt() * sc.TickSize;
 
-                    if (bBarClosed) {
-                        std::stringstream message;
-                        message << "New bar closed - "
-                                << "Symbol: " << sc.Symbol.GetChars() << ", "
-                                << "Close: " << sc.Close[sc.Index] << ", "
-                                << "Volume: " << sc.Volume[sc.Index];
-                    }
-                }
+    if (red && close <= low + ShavedBuffer)
+        Subgraph_ShavedRed[i] = 1;
 
-        if (Subgraph_Intersection[i] > Subgraph_Intersection[i - 1] &&
-            !IsVolImbGreen(sc, i - 1) && !IsVolImbGreen(sc, i - 2) &&
-            !IsVolImbRed(sc, i - 1) && !IsVolImbRed(sc, i - 2)) {
-            DrawText(sc, Subgraph_3oU, "FILL", 0, 5); // D2
-        }
-        */
-        if (IsThreeOutsideUp(sc, i) && bIsCurrentBar) {
-            DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
-            Subgraph_3oU[i] = sc.Low[i];
-        }
+    if (green && close >= high - ShavedBuffer)
+        Subgraph_ShavedGreen[i] = 1;
 
-        if (IsThreeOutsideDown(sc, i) && bIsCurrentBar) {
-            DrawText(sc, Subgraph_3oD, "3oD", 0, 5);
-            Subgraph_3oD[i] = sc.Low[i];
-        }
+    if (low < LowerBand && plow < pLowerBand && green && body > pbody)
+        Subgraph_BBGreen[i] = 1;
 
-        if (IsTweezerTop(sc, i, UpperBand)) {
-            DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
-            Subgraph_EqualH[i] = sc.Low[i];
-        }
+    if (high > UpperBand && phigh > pUpperBand && red && body > pbody)
+        Subgraph_BBRed[i] = 1;
 
-        if (IsTweezerBottom(sc, i, LowerBand)) {
-            DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
-            Subgraph_EqualL[i] = sc.Low[i];
-        }
+#pragma endregion
 
-        if (IsTrampoline(sc, i, rsi, prsi, pprsi, UpperBand, sc.TickSize)) {
-            DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
-            Subgraph_Tramp[i] = sc.Low[i];
-            if (bIsCurrentBar) {
-                sc.AddMessageToLog(txt.Format("ALERT_TRAMP_GREEN"), 1);
-                //sc.AlertWithMessage(ALERT_TRAMP_GREEN, "");
-            }
-        } else if (IsTrampoline(sc, i, rsi, prsi, pprsi, LowerBand, sc.TickSize)) {
-            DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
-            Subgraph_Tramp[i] = sc.Low[i];
-            if (bIsCurrentBar) {
-                sc.AddMessageToLog(txt.Format("ALERT_TRAMP_RED"), 1);
-                //sc.AlertWithMessage(ALERT_TRAMP_RED, "");
-            }
-        }
-        // KAMA BOUNCE
-        if (bIsCurrentBar && bBarClosed && strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
-            if (high > kama && open < kama && close < kama) {
-                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
-            }
-            if (low < kama && open > kama && close > kama) {
-                sc.AddMessageToLog(txt.Format("KAMA wick"), 1);
-                sc.AlertWithMessage(ALERT_KAMA_WICK, "KAMA BOUNCE");
-            }
-        }
+#pragma region PATTERNS
+
+    const double EqualTolerance = 3.0 * sc.TickSize;
+
+    if (IsThreeOutsideUp(sc, i)) {
+        DrawTextAtBar(sc, Subgraph_3oU, "3oU", i, 0, 5, DRAWSLOT_3OU);
+        Subgraph_3oU[i] = sc.Low[i];
+    }
+
+    if (IsThreeOutsideDown(sc, i)) {
+        DrawTextAtBar(sc, Subgraph_3oD, "3oD", i, 0, 5, DRAWSLOT_3OD);
+        Subgraph_3oD[i] = sc.Low[i];
+    }
+
+    if (IsTweezerTop(sc, i, UpperBand, EqualTolerance)) {
+        DrawTextAtBar(sc, Subgraph_EqualH, "Eq Hi", i - 1, 1, 5, DRAWSLOT_EQHI);
+        Subgraph_EqualH[i] = sc.Low[i];
+    }
+
+    if (IsTweezerBottom(sc, i, LowerBand, EqualTolerance)) {
+        DrawTextAtBar(sc, Subgraph_EqualL, "Eq Lo", i - 1, -1, 5, DRAWSLOT_EQLO);
+        Subgraph_EqualL[i] = sc.Low[i];
+    }
+
+    // FIXED: the two branches used to have their labels the wrong way round -
+    // the UpperBand call (a short setup) logged "TRAMP_GREEN".
+    if (IsTrampolineDown(sc, i, rsi, prsi, pprsi, UpperBand, sc.TickSize)) {
+        DrawTextAtBar(sc, Subgraph_Tramp, "TR", i - 1, 1, 3, DRAWSLOT_TRAMP);
+        Subgraph_Tramp[i] = sc.Low[i];
+        FireAlert(PD_ALERT_TRAMP_DOWN, 0 /* log only - set to ALERT_TRAMP_DOWN to enable sound */,
+                  "Trampoline DOWN");
+    } else if (IsTrampolineUp(sc, i, rsi, prsi, pprsi, LowerBand, sc.TickSize)) {
+        DrawTextAtBar(sc, Subgraph_Tramp, "TR", i - 1, -1, 3, DRAWSLOT_TRAMP);
+        Subgraph_Tramp[i] = sc.Low[i];
+        FireAlert(PD_ALERT_TRAMP_UP, 0 /* log only - set to ALERT_TRAMP_UP to enable sound */,
+                  "Trampoline UP");
+    }
+
+    // KAMA BOUNCE
+    if (strstr(sc.Symbol.GetChars(), "NQ") != NULL) {
+        const bool bKamaWickDown = (high > kama && open < kama && close < kama);
+        const bool bKamaWickUp = (low < kama && open > kama && close > kama);
+
+        if (bKamaWickDown || bKamaWickUp)
+            FireAlert(PD_ALERT_KAMA_WICK, ALERT_KAMA_WICK, "KAMA BOUNCE");
+    }
+
 #pragma endregion
 
 #pragma region BAR COLORING
-        if (Input_BarColor.GetIndex() != 0)
-            sc.RSI(sc.BaseDataIn[SC_LAST], Subgraph_ColorBar, MOVAVGTYPE_SIMPLE, 14);
 
-        int iRedGreenColor = 255;
-        if (Input_BarColor.GetIndex() == 1) // waddah explosion
+    /*
+        FIXED: this used to run a full RSI calculation into Subgraph_ColorBar
+        purely to make the subgraph value non-zero (DRAWSTYLE_COLOR_BAR only
+        paints when the value is non-zero).  Setting it to 1 does the same job
+        without the wasted calculation, and without stuffing RSI values into a
+        subgraph named "Bar Color".
+    */
+    Subgraph_ColorBar[i] = 0;
+
+    const int BarColorMode = Input_BarColor.GetIndex();
+
+    if (BarColorMode != 0) {
+        Subgraph_ColorBar[i] = 1;
+
+        if (BarColorMode == 1) // waddah explosion
         {
-            iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
+            int Intensity = static_cast<int>(fabs(t1)) + Input_BarColorWaddah.GetInt();
+            if (Intensity > 255) Intensity = 255;
+            if (Intensity < 0) Intensity = 0;
+
             if (t1 > 0)
-                Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
+                Subgraph_ColorBar.DataColor[i] = RGB(0, Intensity, 0);
             else
-                Subgraph_ColorBar.DataColor[i] = RGB(iRedGreenColor, 0, 0);
-        } else if (Input_BarColor.GetIndex() == 2) // linda macd
+                Subgraph_ColorBar.DataColor[i] = RGB(Intensity, 0, 0);
+        } else if (BarColorMode == 2) // linda macd
         {
-            iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
+            // NOTE: this branch scales the intensity from t1 (the Waddah value),
+            // not from `linda`.  That looks like a copy/paste from the branch
+            // above, but changing it alters how your bars look, so it has been
+            // left as-is.  Swap fabs(t1) for fabs(linda) if that was the intent.
+            int Intensity = static_cast<int>(fabs(t1)) + Input_BarColorLinda.GetInt();
+            if (Intensity > 255) Intensity = 255;
+            if (Intensity < 0) Intensity = 0;
+
             if (linda > 0)
-                Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
+                Subgraph_ColorBar.DataColor[i] = RGB(0, Intensity, 0);
             else
-                Subgraph_ColorBar.DataColor[i] = RGB(iRedGreenColor, 0, 0);
-        } else if (Input_BarColor.GetIndex() == 3) // super trend
+                Subgraph_ColorBar.DataColor[i] = RGB(Intensity, 0, 0);
+        } else if (BarColorMode == 3) // super trend
         {
             if (bSuperUp)
                 Subgraph_ColorBar.DataColor[i] = RGB(0, 255, 0);
             else
                 Subgraph_ColorBar.DataColor[i] = RGB(255, 0, 0);
         }
+    }
+
 #pragma endregion
 
 #pragma region BUY SELL PLOTS
-        bool bShowUp = true;
-        bool bShowDown = true;
 
-        if (
-            (Input_UseMacd.GetYesNo() == SC_YES && linda < 0) ||
-            (Input_UseSar.GetYesNo() == SC_YES && SAR > close) ||
-            (Input_UseFisher.GetYesNo() == SC_YES && fish < 0) ||
-            (Input_UseT3.GetYesNo() == SC_YES && t3 > close) ||
-            (Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) ||
-            (Input_UseAO.GetYesNo() == SC_YES && ao < 0) ||
-            (adx < Input_ADX.GetInt()) ||
-            (Input_UseHMA.GetYesNo() == SC_YES && hma > close) ||
-            (Input_UseSuperTrend.GetYesNo() == SC_YES && !bSuperUp))
-            bShowUp = false;
+    /*
+        FIXED: the doji filter used to `return` out of the whole study function.
+        In AutoLoop that skips every remaining calculation for that bar -
+        Volume Imbalance, bar colouring, the lot.  It now only does what its
+        description says: suppress the buy/sell dots.
+    */
+    const bool bSuppressForDoji = (Input_IgnoreDoji.GetYesNo() == SC_YES && doji);
 
-        if (
-            (Input_UseMacd.GetYesNo() == SC_YES && linda > 0) ||
-            (Input_UseSar.GetYesNo() == SC_YES && SAR < close) ||
-            (Input_UseFisher.GetYesNo() == SC_YES && fish > 0) ||
-            (Input_UseT3.GetYesNo() == SC_YES && t3 < close) ||
-            (Input_UseWaddah.GetYesNo() == SC_YES && t1 > 0) ||
-            (Input_UseAO.GetYesNo() == SC_YES && ao > 0) ||
-            (adx < Input_ADX.GetInt()) ||
-            (Input_UseHMA.GetYesNo() == SC_YES && hma < close) ||
-            (Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperUp))
-            bShowDown = false;
+    bool bShowUp = !bSuppressForDoji;
+    bool bShowDown = !bSuppressForDoji;
 
-        if (bShowUp) {
-            Subgraph_DotUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
-            if (bIsCurrentBar) {
-                sc.AlertWithMessage(ALERT_BUY, "BUY Signal");
-                sc.AddMessageToLog(txt.Format("BUY Signal"), 1);
-            }
-        }
+    if (
+        (Input_UseMacd.GetYesNo() == SC_YES && linda < 0) ||
+        (Input_UseSar.GetYesNo() == SC_YES && SAR > close) ||
+        (Input_UseFisher.GetYesNo() == SC_YES && fish < 0) ||
+        (Input_UseT3.GetYesNo() == SC_YES && t3 > close) ||
+        (Input_UseWaddah.GetYesNo() == SC_YES && t1 <= 0) ||
+        (Input_UseAO.GetYesNo() == SC_YES && ao < 0) ||
+        (adx < Input_ADX.GetInt()) ||
+        (Input_UseHMA.GetYesNo() == SC_YES && hma > close) ||
+        (Input_UseSuperTrend.GetYesNo() == SC_YES && !bSuperUp))
+        bShowUp = false;
 
-        if (bShowDown) {
-            Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
-            if (bIsCurrentBar) {
-                sc.AlertWithMessage(ALERT_SELL, "SELL Signal");
-                sc.AddMessageToLog(txt.Format("SELL Signal"), 1);
-            }
-        }
+    if (
+        (Input_UseMacd.GetYesNo() == SC_YES && linda > 0) ||
+        (Input_UseSar.GetYesNo() == SC_YES && SAR < close) ||
+        (Input_UseFisher.GetYesNo() == SC_YES && fish > 0) ||
+        (Input_UseT3.GetYesNo() == SC_YES && t3 < close) ||
+        (Input_UseWaddah.GetYesNo() == SC_YES && t1 > 0) ||
+        (Input_UseAO.GetYesNo() == SC_YES && ao > 0) ||
+        (adx < Input_ADX.GetInt()) ||
+        (Input_UseHMA.GetYesNo() == SC_YES && hma < close) ||
+        (Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperUp))
+        bShowDown = false;
+
+    if (bShowUp) {
+        Subgraph_DotUp[i] = sc.Low[i] - (Input_UpOffset.GetInt() * sc.TickSize);
+        FireAlert(PD_ALERT_BUY, ALERT_BUY, "BUY Signal");
+    }
+
+    if (bShowDown) {
+        Subgraph_DotDown[i] = sc.High[i] + (Input_DownOffset.GetInt() * sc.TickSize);
+        FireAlert(PD_ALERT_SELL, ALERT_SELL, "SELL Signal");
+    }
 
 #pragma endregion
 
-        // VolImb need to be BEFORE the current bar check, or they don't re-draw after an INS key update
-        if (IsVolImbGreen(sc, sc.CurrentIndex))
-            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
-
-        if (IsVolImbRed(sc, sc.CurrentIndex))
-            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
-
-        if (!bIsCurrentBar)
-            return;
-
 #pragma region VOLUME IMBALANCE
-        //sc.AddMessageToLog(txt.Format("NEW BAR"), 1);
-        //sc.AddMessageToLog(txt.Format("Bar closed, i = %d Array-2 = %d", i, sc.ArraySize-2), 1);
 
-        // CHECK FOR VOLIMB FINISHES
-        if (false && bBarClosed) {
-            //sc.AddMessageToLog(txt.Format("Checking NumLines status"), 1);
-            auto iUpDown { 0 };
-            auto LineIDForBar{ 0 };
-            auto StartIndex{ 0 };
-            float price = 0;
-            auto endIndex{ 0 };
-            int NumLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
-            for (NumLines; NumLines >= 0; NumLines--) {
-                sc.GetStudyLineUntilFutureIntersectionByIndex(
-                    sc.ChartNumber,
-                    sc.StudyGraphInstanceID,
-                    NumLines,
-                    LineIDForBar,
-                    StartIndex,
-                    price,
-                    endIndex);
-                iUpDown = Subgraph_VolImbDirection[StartIndex];
+    /*
+        The plotting below runs for every bar so the arrows survive a redraw or
+        an INS-key recalculation - that was the reason for the original comment
+        about keeping this above the current-bar check.  The alerts are handled
+        by FireAlert(), which is what actually restricts them to the live bar,
+        so there is no longer a `return` here that can accidentally swallow the
+        rest of the function.
+    */
 
-                // GREEN volimb interception
-                if ((low < price || (high > price && open < price && close < price))
-                    && iUpDown == 1) {
-                    iUpDown = 0;
-                    if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
-                        txt.Format("gVB intercept: o %d c %d price %f low %f", StartIndex, i, price, low);
-                        sc.AddMessageToLog(txt, 1);
-                        sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
-                    }
-                    break;
-                }
+    if (IsVolImbGreen(sc, i)) {
+        Subgraph_VolImbUp[i] = low - (Input_UpOffset.GetInt() * sc.TickSize);
+        Subgraph_VolImbOriginCandle[i] = static_cast<float>(i);
+        Subgraph_VolImbDirection[i] = 1;
+        Subgraph_VolImbPrice[i] = open;
 
-                // RED volimb interception
-                if ((high > price || (low < price && close > price && open > price))
-                    && iUpDown == -1) {
-                    iUpDown = 0;
-                    if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
-                        txt.Format("rVB intercept: o %d c %d price %f high %f", StartIndex, i, price, high);
-                        sc.AddMessageToLog(txt, 1);
-                        sc.AlertWithMessage(ALERT_VOLIMB_FILL, "");
-                    }
-                    break;
-                }
-            }
+        if (bBarClosed) {
+            if (plow < pLowerBand || low < LowerBand)
+                FireAlert(PD_ALERT_BBGAP_GREEN, ALERT_BBGAP_GREEN, "God trade GREEN");
+            else
+                FireAlert(PD_ALERT_VOLIMB_GREEN, 0 /* log only - use ALERT_VOLIMB_GREEN for sound */,
+                          "Green Volume Imbalance");
         }
-        /*
-                if (bBarClosed && !IsVolImbGreen(sc, sc.CurrentIndex) && !IsVolImbRed(sc, sc.CurrentIndex) && sc.IsNewBar(i))
-                for (int iW = sc.ArraySize - 1; iW >= 0; iW--)
-                {
-                    if (Subgraph_VolImbDirection[iW] != 0 && Subgraph_VolImbPrice[iW] != 0) {
-                        // GREEN volimb interception
-                        if (low < Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == 1) {
-                            Subgraph_VolImbDirection[iW] = 0;
-                            txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], low);
-                            sc.AddMessageToLog(txt, 0);
-                            break;
-                        }
-                        // RED volimb interception
-                        if (high > Subgraph_VolImbPrice[iW] && Subgraph_VolImbDirection[iW] == -1) {
-                            Subgraph_VolImbDirection[iW] = 0;
-                            txt.Format("VB intercept: origin %d current %d price %f low %f", Subgraph_VolImbOriginCandle[iW], iW, Subgraph_VolImbPrice[iW], high);
-                            sc.AddMessageToLog(txt, 0);
-                            break;
-                        }
-                    }
-                }
-        */
-        Subgraph_VolImbUp[i] = 0;
-        Subgraph_VolImbDown[i] = 0;
-        Subgraph_VolImbOriginCandle[i] = 0;
-        Subgraph_VolImbDirection[i] = 0;
-        Subgraph_VolImbPrice[i] = 0;
+    }
 
-        if (IsVolImbGreen(sc, sc.CurrentIndex)) {
-            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
-            Subgraph_VolImbUp[i] = low - ((Input_UpOffset.GetInt()) * sc.TickSize);
-            Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
-            Subgraph_VolImbDirection[i] = 1;
-            Subgraph_VolImbPrice[i] = open;
+    if (IsVolImbRed(sc, i)) {
+        // FIXED: was using Input_UpOffset for the down arrow.
+        Subgraph_VolImbDown[i] = high + (Input_DownOffset.GetInt() * sc.TickSize);
+        Subgraph_VolImbOriginCandle[i] = static_cast<float>(i);
+        Subgraph_VolImbDirection[i] = -1;
+        Subgraph_VolImbPrice[i] = open;
 
-            // Send alerts
-            //txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
-            //sc.AddMessageToLog(txt, 0);
-            if (bBarClosed) {
-                // Is BB gap god trade
-                if (plow < LowerBand || low < LowerBand) {
-                    sc.AddMessageToLog(txt.Format("God trade GREEN at %d", sc.CurrentIndex), 1);
-                    sc.AlertWithMessage(ALERT_BBGAP_GREEN, "Green Volume Imbalance");
-                }
-
-                //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
-                sc.AddMessageToLog(txt.Format("Green Volume Imbalance at %d", sc.CurrentIndex), 1);
-                //sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance");
-                //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
-                //     sc.AlertWithMessage(ALERT_VOLIMB_GREEN, "Green Volume Imbalance ES");
-            }
+        if (bBarClosed) {
+            if (phigh > pUpperBand || high > UpperBand)
+                FireAlert(PD_ALERT_BBGAP_RED, ALERT_BBGAP_RED, "BBGap God Trade RED");
+            else
+                FireAlert(PD_ALERT_VOLIMB_RED, 0 /* log only - use ALERT_VOLIMB_RED for sound */,
+                          "Red Volume Imbalance");
         }
+    }
 
-        if (IsVolImbRed(sc, sc.CurrentIndex)) {
-            //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
-            Subgraph_VolImbDown[i] = high + ((Input_UpOffset.GetInt()) * sc.TickSize);
-            Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
-            Subgraph_VolImbDirection[i] = -1;
-            Subgraph_VolImbPrice[i] = open;
+#pragma endregion
 
-            // Send alerts
-            //txt.Format("Volume Imbalance at %d, count %d on %s", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars());
-            //sc.AddMessageToLog(txt.Format(txt", sc.CurrentIndex, CurrentLineCount, sc.Symbol.GetChars(), 0);
-            if (bBarClosed) {
-                // Is BB gap god trade?
-                if (phigh > UpperBand || high > UpperBand) {
-                    sc.AddMessageToLog(txt.Format("BBGap God Trade RED at %d", sc.CurrentIndex), 1);
-                    sc.AlertWithMessage(ALERT_BBGAP_RED, "BBGap God Trade");
-                } else {
-                    sc.AddMessageToLog(txt.Format("Red Volume Imbalance at %d", sc.CurrentIndex), 1);
-                    //sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
-                }
-                //if (strstr(sc.Symbol.GetChars(), "NQ") != NULL)
-                //sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance");
-                //else if (strstr(sc.Symbol.GetChars(), "ES") != NULL)
-                //    sc.AlertWithMessage(ALERT_VOLIMB_RED, "Red Volume Imbalance ES");
-            }
-        }
+#pragma region VOLUME IMBALANCE FILL DETECTION (work in progress - disabled)
 
-        /*
-        // sc.StudyGraphInstanceID identifies this study instance
-        auto LineIDForBar{0};
-        auto StartIndex{0};
-        auto LineValue{0.0f};
-        auto endIndex{0};
+    /*
+        Still disabled, as in the original.  Two things were fixed in place so
+        it behaves if you switch it on:
 
-        auto NumLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
-        for (NumLines; NumLines >= 0; NumLines--) {
-            break;
-            sc.GetStudyLineUntilFutureIntersectionByIndex(
+          - the loop started at NumLines rather than NumLines - 1, so the first
+            iteration always asked for an index one past the end
+          - the alerts now go through FireAlert() like everything else
+    */
+    if (false && bBarClosed) {
+        int LineIDForBar = 0;
+        int StartIndex = 0;
+        int endIndex = 0;
+        t_ChartArrayDataType price = 0;   // must match sc.GetStudyLineUntilFutureIntersectionByIndex (double in current builds)
+
+        const int NumLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID);
+
+        for (int LineIndex = NumLines - 1; LineIndex >= 0; LineIndex--) {
+            if (!sc.GetStudyLineUntilFutureIntersectionByIndex(
                 sc.ChartNumber,
                 sc.StudyGraphInstanceID,
-                NumLines,
+                LineIndex,
                 LineIDForBar,
                 StartIndex,
-                LineValue,
-                endIndex);
+                price,
+                endIndex))
+                continue;
 
-            if (endIndex == 0) {
-                if (AlreadyAlertedBar != i && sc.IsNewBar(i)) {
-                    SCString Message;
-                    Message.Format("Line ID %d (started at bar %d, value %.5f) intersected on current bar %d",LineIDForBar, StartIndex, LineValue, endIndex
-                    );
-                    sc.AddMessageToLog(Message, 0);
-                    sc.AlertWithMessage(1, Message);
-                    AlreadyAlertedBar = i;
+            const int iUpDown = static_cast<int>(Subgraph_VolImbDirection[StartIndex]);
+
+            // GREEN volimb interception
+            if ((low < price || (high > price && open < price && close < price)) && iUpDown == 1) {
+                if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
+                    txt.Format("gVB intercept: o %d c %d price %f low %f", StartIndex, i, price, low);
+                    FireAlert(PD_ALERT_VOLIMB_FILL, ALERT_VOLIMB_FILL, txt.GetChars());
                 }
-            } // endIndex
-        } // Numlines loop
-        */
+                break;
+            }
+
+            // RED volimb interception
+            if ((high > price || (low < price && close > price && open > price)) && iUpDown == -1) {
+                if (((i - StartIndex) > 2) && ((i - StartIndex) < 30)) {
+                    txt.Format("rVB intercept: o %d c %d price %f high %f", StartIndex, i, price, high);
+                    FireAlert(PD_ALERT_VOLIMB_FILL, ALERT_VOLIMB_FILL, txt.GetChars());
+                }
+                break;
+            }
+        }
     }
 
 #pragma endregion
