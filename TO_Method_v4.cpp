@@ -1,9 +1,35 @@
 // ============================================================================================
-//  TraderOracle Method v4, build 6 - Oct 4, 2026
+//  REVERSAL GRAIL - Sierra Chart ACSIL custom study
 // ============================================================================================
-// HISTORY: I fed 208 reversal indicators into Fable 5.1 Max, with instructions to parse them
-// all, backtest over 10 years market data, and combine into a single, SUPER REVERSAL indicator.
-// Then I fed in LittleRizzy code, and my own Reversal Volume Patterns.
+//
+//  One study, three modules. Each module has its own section of inputs in Study Settings,
+//  headed by a separator input with the module's name, and its own block of fixed settings in
+//  this file:
+//
+//    REVERSAL GRAIL            the reversal signal (BUY / SELL tags), stop / target tracking,
+//                              alerts 1-10, TraderOracle patterns, Resistance Cloud.
+//                              Fixed settings: "HOLY GRAIL REVERSALS - SETTINGS".
+//    LITTLE RIZZY              measured-move target levels from two swing pivots, touch /
+//                              break / expiry styling, touch-and-reverse arrows.
+//                              Fixed settings: "LITTLE RIZZY - SETTINGS".
+//    REVERSAL VOLUME PATTERNS  the four volume / candle reversal patterns (squares).
+//                              Fixed settings: "VOLUME REVERSALS - SETTINGS".
+//
+//  COLOR THEME (last section of the inputs) colours every marker of all three modules: 30
+//  themes, 22 for dark chart backgrounds and 8 for light ones, or Custom. See "COLOR THEMES".
+//  The Oo0 Wix9ine Ranges signals are a separate study (Oo0_Wix9ine_Ranges.cpp) with the same
+//  30 themes; pick the same theme in both.
+//
+//  All three modules' alerts go out as one combined Alert Manager entry per update, so Sierra
+//  Chart's one-alert-per-update rule never drops one.
+//
+//  ---------------------------------------------------------------- the REVERSAL GRAIL signal
+//
+//  One reversal signal built from the components that tested best across 10 public reversal
+//  indicators (LuxAlgo TD/Reversal Signals, VDUB %B divergence, Reversal Volume Patterns,
+//  BB re-entry, AlgoAlpha, Candlestick Reversal System, 3-Bar Reversal, Island Reversal,
+//  Pivot HL, Reversal Probability Zone), backtested on ~5M bars of index / commodity / FX /
+//  crypto / stock data with a development set and a separate holdout set.
 //
 //  Values in <angle brackets> are constants in the HOLY GRAIL REVERSALS settings block below.
 //
@@ -81,6 +107,26 @@
 //    large-wick-in-cloud setup had a small, consistent edge on its own (the same wick outside
 //    the cloud had none).
 //
+//    ZONE EFFECTS (live; the space between the upper and lower cloud is "the middle")
+//    - Near: while the last price is within <Near Zone %> of the middle's width from a zone (or
+//      inside it), that zone's fill is <Near Opacity Boost> percentage points more opaque
+//      (22% -> 37% at the default 78% transparency). It returns to normal when price moves away.
+//    - Touch: the previous bar closed in the middle and the current bar reaches the zone's inner
+//      edge (within <Touch Tolerance> ticks) or goes past it: the zone blinks once, right away,
+//      on the forming bar.
+//    - Wick: the previous bar closed in the middle and a bar CLOSES with its wick through one of
+//      the zone's edges while its body stays on the near side of that edge: the zone blinks 3
+//      times when that bar closes. (So a touch that turns into a wick rejection blinks once on
+//      the touch and 3 times at the close.)
+//    - Reset: after a touch (or wick) blink on a zone, another touch (or wick) blink on the same
+//      zone needs <Reset Bars> bars (bar N fires, bars N+1..N+4 can't, bar N+5 can again).
+//    A blink is a bright flash followed by a dim step, <Blink ms> each; whole zone, every bar.
+//    The extra opacity comes from up to three extra fill layers drawn over the zone, which
+//    compound the study's transparency (Sierra Chart has one transparency per study). The boost
+//    uses as few layers as it needs and fades the last one's colour toward the chart background,
+//    so the total lands on <Near Opacity Boost> at any "Cloud Transparency %" (exact over the
+//    plain background, close over candles).
+//
 //  TRADERORACLE PATTERNS (separate markers; they do not change the signal score)
 //    Ported from the TraderOracle module and computed with the same Sierra Chart functions
 //    (sc.RSI simple 14, sc.BollingerBands 20/2 simple, the squeeze relaxer EMA/linear
@@ -127,7 +173,7 @@ SCDLLName("TO Method v4")
 // =============================================================================================
 // =============================================================================================
 //
-//      TO Method v4  -  SETTINGS
+//      HOLY GRAIL REVERSALS  -  SETTINGS
 //
 //      These used to be study inputs. They are fixed here so the signal is the one that was
 //      tested. To change one, edit the value, rebuild the study (Analysis >> Build Custom Studies
@@ -135,7 +181,7 @@ SCDLLName("TO Method v4")
 //
 // =============================================================================================
 // =============================================================================================
-namespace TOMethod4
+namespace HolyGrail
 {
     // ---------------------------------------------------------------- the reversal signal
     const int   EXTREME_LOOKBACK_BARS     = 20;    // signal bar must be the lowest low (buy) / highest high (sell) of this many bars
@@ -191,12 +237,24 @@ namespace TOMethod4
     const int   CLOUD_ATR_LENGTH          = 66;
     const float CLOUD_NEAR_ATR_FACTOR     = 1.95f; // inner edge of the cloud
     const float CLOUD_FAR_ATR_FACTOR      = 7.0f;  // outer edge = halfway between the near and far bounds
+
+    // ---------------------------------------------------------------- Resistance Cloud zone effects
+    const bool  ZONE_EFFECTS              = true;  // near-zone highlight and touch / wick blinks
+    const float ZONE_NEAR_PCT             = 10.0f; // "very close" = within this % of the gap between the two clouds
+    const int   ZONE_NEAR_OPACITY_BOOST   = 15;    // extra opacity (percentage points) while price is near a zone
+    const int   ZONE_TOUCH_TOLERANCE_TICKS= 1;     // a high / low this close to the inner edge counts as a touch
+    const int   ZONE_TOUCH_BLINKS         = 1;     // blinks when price touches a zone from the middle
+    const int   ZONE_WICK_BLINKS          = 3;     // blinks when a wick goes through a zone edge and the body doesn't
+    const int   ZONE_RESET_BARS           = 5;     // bars before the same event can blink the same zone again
+    const int   ZONE_BLINK_MS             = 250;   // length of each flash / dim step
+    const float ZONE_FLASH_MIX            = 0.35f; // flash colour = zone colour moved this far toward white (dark chart) / black
 }
 // =============================================================================================
 
 namespace
 {
     inline double UrsMax(double a, double b) { return a > b ? a : b; }
+    inline double UrsMin(double a, double b) { return a < b ? a : b; }
     inline int    UrsMaxI(int a, int b)      { return a > b ? a : b; }
     inline int    UrsMinI(int a, int b)      { return a < b ? a : b; }
 
@@ -289,6 +347,22 @@ namespace
     const int PKEY_PENDING_FROM      = 22;   // earliest bar of events deferred to the next update (-1 = none)
     const int PKEY_EXT_SOUND         = 23;   // sound of other modules' alerts carried to the next update
     const int PKEY_EXT_TEXT          = 1;    // (persistent string) their text
+
+    // Cloud zone effects
+    const int PKEY_ZONE_LAYER_ZONE   = 30;   // zone the highlight layers currently cover: 1 upper, 2 lower
+    const int PKEY_ZONE_TOUCH_BASE   = 31;   // 31 upper, 32 lower: bar of the last touch blink
+    const int PKEY_ZONE_WICK_BASE    = 33;   // 33 upper, 34 lower: bar of the last wick blink
+    const int PKEY_ZONE_BLINK_ZONE   = 35;   // zone blinking now: 1 upper, 2 lower
+    const int PKEY_ZONE_BLINK_STEPS  = 36;   // blink steps left (even = flash, odd = dim)
+    const int PKEY_ZONE_BLINK_TIME   = 30;   // (persistent double) time of the last blink step, ms
+
+    // Wall-clock milliseconds, for blink timing.
+    double RG_NowMs()
+    {
+        using namespace std::chrono;
+        return static_cast<double>(
+            duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+    }
 }
 
 
@@ -316,27 +390,30 @@ struct RG_ExternalAlerts
 // Subgraph and input numbers of each module (inputs are numbered without gaps).
 const int RG_SG_LITTLE_RIZZY   = 34;
 const int RG_SG_VOLUME_PATTERN = 51;
-// Inputs are listed in Study Settings in index order, so Color Theme (0-1) comes first.
-const int RG_IN_SEP_THEME      = 0;
-const int RG_IN_THEME          = 1;
-const int RG_IN_SEP_GRAIL      = 2;
-const int RG_IN_GRAIL          = 3;    // 30 inputs: 3..32
-const int RG_IN_SEP_RIZZY      = 33;
-const int RG_IN_RIZZY          = 34;   // 13 inputs: 34..46
-const int RG_IN_SEP_VOLUME     = 47;
-const int RG_IN_VOLUME         = 48;   // 2 inputs: 48..49
+const int RG_SG_ZONE_FX        = 54;   // cloud zone highlight layers: 54/55, 56/57, 58/59 (Sierra Chart's last subgraphs)
+const int RG_ZONE_FX_LAYERS    = 3;
+const int RG_IN_SEP_GRAIL      = 0;
+const int RG_IN_GRAIL          = 1;
+const int RG_IN_SEP_RIZZY      = 31;
+const int RG_IN_RIZZY          = 32;
+const int RG_IN_SEP_VOLUME     = 45;
+const int RG_IN_VOLUME         = 46;
+const int RG_IN_SEP_THEME      = 48;
+const int RG_IN_THEME          = 49;
+const int RG_IN_BACKGROUND     = 50;   // chart background colour, used with the Custom theme
 
 // =============================================================================================
 // =============================================================================================
 //
 //      COLOR THEMES
 //
-//      The "Color Theme" input (first section of the inputs) colours every marker of the three
+//      The "Color Theme" input (last section of the inputs) colours every marker of the three
 //      modules. Each theme is built on one colour scheme:
 //        - BUY and SELL are a complementary (or split-complementary) pair.
 //        - BUY+ / SELL+ (A+ tags and their glow) are a stronger shade of the same hue.
 //        - Trampoline, squeeze, volume-pattern and target colours take the remaining positions
-//          around the colour wheel, so each kind of marker has its own hue.
+//          around the colour wheel, so each kind of marker has its own hue. (The separate Oo0
+//          study's colour for each theme fills the widest gap left on that wheel.)
 //        - The Resistance Cloud is a muted pair, so the bright tags stay readable on top of it.
 //          Engulfing backgrounds are faint tints of the cloud colours, blended toward the
 //          chart background, and the cloud's outer lines are a darker shade of its inner lines.
@@ -482,6 +559,19 @@ static COLORREF RG_Mix(COLORREF A, COLORREF B, float t)
                static_cast<int>(ab + (bb - ab) * t + 0.5f));
 }
 
+// Sierra Chart no longer exposes the chart background colour to studies (sc.ChartBackgroundColor
+// was removed), so it is taken from the theme: themes 1-22 are tuned for a dark background,
+// 23-30 for a light one. With Custom, the "Chart Background Color" input is used.
+const int RG_FIRST_LIGHT_THEME = 22;   // index of "23. Paper Classic (light)"
+
+static COLORREF RG_ChartBackground(SCStudyInterfaceRef sc)
+{
+    const int index = sc.Input[RG_IN_THEME].GetIndex();
+    if (index >= 0 && index < RG_THEME_COUNT)
+        return (index < RG_FIRST_LIGHT_THEME) ? RGB(0, 0, 0) : RGB(255, 255, 255);
+    return sc.Input[RG_IN_BACKGROUND].GetColor();
+}
+
 // Writes the selected theme into the subgraph colours (and the two Little Rizzy line colour
 // inputs) that every module draws with. Custom: nothing is changed.
 static void RG_ApplyTheme(SCStudyInterfaceRef sc)
@@ -491,7 +581,7 @@ static void RG_ApplyTheme(SCStudyInterfaceRef sc)
         return;
 
     const RG_Theme& T = RG_THEMES[index];
-    const COLORREF back = sc.ChartBackgroundColor;
+    const COLORREF back = RG_ChartBackground(sc);
     const int brightness = ((back & 0xFF) * 299 + ((back >> 8) & 0xFF) * 587 + ((back >> 16) & 0xFF) * 114) / 1000;
     const COLORREF contrast = (brightness < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
 
@@ -672,8 +762,10 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
             "Alerts for new arrows, targets hit before the stop, signal bars that open at the prior "
             "close, and those that also broke the outer Bollinger band. Also shows the TraderOracle "
             "trampoline, engulfing-at-band and squeeze dot patterns and the TraderOracle Method "
-            "Resistance Cloud (Nadaraya-Watson envelope), with their own alerts. Includes the Little "
-            "Rizzy measured-move levels and the Reversal Volume Patterns. 30 colour themes.";
+            "Resistance Cloud (Nadaraya-Watson envelope), with their own alerts; a cloud zone gets "
+            "more opaque when price is near it and blinks on a touch (once) or a wick rejection "
+            "(3 times). Includes the Little Rizzy measured-move levels and the Reversal Volume "
+            "Patterns. 30 colour themes.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
         sc.ValueFormat = VALUEFORMAT_INHERITED;
@@ -951,6 +1043,23 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         Subgraph_WickInCloud.LineWidth = 3;
         Subgraph_WickInCloud.DrawZeros = false;
 
+        // Zone highlight layers: extra transparent fills over one cloud zone, switched on and
+        // recoloured at run time by the zone effects (near highlight, touch / wick blinks).
+        static const char* const ZONE_FX_NAMES[2 * RG_ZONE_FX_LAYERS] =
+        {
+            "(internal) Zone Highlight 1 Top", "(internal) Zone Highlight 1 Bottom",
+            "(internal) Zone Highlight 2 Top", "(internal) Zone Highlight 2 Bottom",
+            "(internal) Zone Highlight 3 Top", "(internal) Zone Highlight 3 Bottom",
+        };
+        for (int k = 0; k < 2 * RG_ZONE_FX_LAYERS; ++k)
+        {
+            sc.Subgraph[RG_SG_ZONE_FX + k].Name = ZONE_FX_NAMES[k];
+            sc.Subgraph[RG_SG_ZONE_FX + k].DrawStyle = DRAWSTYLE_IGNORE;
+            sc.Subgraph[RG_SG_ZONE_FX + k].PrimaryColor = RGB(224, 49, 73);
+            sc.Subgraph[RG_SG_ZONE_FX + k].SecondaryColor = RGB(224, 49, 73);
+            sc.Subgraph[RG_SG_ZONE_FX + k].DrawZeros = false;
+        }
+
         Input_ShowCloud.Name = "Show Resistance Cloud";
         Input_ShowCloud.SetYesNo(1);
 
@@ -991,27 +1100,27 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     }
 
     // ---------------------------------------------------------------- settings
-    const int    lookback    = TOMethod4::EXTREME_LOOKBACK_BARS;
-    const int    minScore    = TOMethod4::MIN_SCORE_TO_SIGNAL;
-    const int    tdMin       = TOMethod4::PERSISTENCE_COUNT;
-    const int    divFar      = UrsMaxI(TOMethod4::DIVERGENCE_WINDOW_START, TOMethod4::DIVERGENCE_WINDOW_END + 1);
-    const int    divNear     = TOMethod4::DIVERGENCE_WINDOW_END;
-    const int    bbLen       = TOMethod4::ZSCORE_BOLLINGER_LENGTH;
-    const bool   useVol      = TOMethod4::USE_VOLUME;
-    const int    volLen      = TOMethod4::VOLUME_AVERAGE_LENGTH;
-    const double quietRVol   = TOMethod4::QUIET_VOLUME_THRESHOLD;
-    const double climaxVeto  = TOMethod4::CLIMAX_VOLUME_VETO;
-    const int    emaLen      = TOMethod4::TREND_EMA_LENGTH;
-    const double zVeto       = TOMethod4::BAND_BLOWTHROUGH_VETO;
-    const double rangeVeto   = TOMethod4::WIDE_RANGE_BAR_VETO;
-    const int    atrLen      = TOMethod4::ATR_LENGTH;
-    const int    cooldown    = TOMethod4::COOLDOWN_BARS;
-    const double stopBuf     = TOMethod4::STOP_BUFFER_ATR;
-    const double minRisk     = TOMethod4::MIN_RISK_ATR;
-    const double targetR     = TOMethod4::TARGET_R;
-    const bool   showLevels  = TOMethod4::SHOW_STOP_TARGET_LINES;
-    const double arrowOff    = TOMethod4::TAG_OFFSET_ATR;
-    const bool   closeOnly   = TOMethod4::EVALUATE_ON_BAR_CLOSE;
+    const int    lookback    = HolyGrail::EXTREME_LOOKBACK_BARS;
+    const int    minScore    = HolyGrail::MIN_SCORE_TO_SIGNAL;
+    const int    tdMin       = HolyGrail::PERSISTENCE_COUNT;
+    const int    divFar      = UrsMaxI(HolyGrail::DIVERGENCE_WINDOW_START, HolyGrail::DIVERGENCE_WINDOW_END + 1);
+    const int    divNear     = HolyGrail::DIVERGENCE_WINDOW_END;
+    const int    bbLen       = HolyGrail::ZSCORE_BOLLINGER_LENGTH;
+    const bool   useVol      = HolyGrail::USE_VOLUME;
+    const int    volLen      = HolyGrail::VOLUME_AVERAGE_LENGTH;
+    const double quietRVol   = HolyGrail::QUIET_VOLUME_THRESHOLD;
+    const double climaxVeto  = HolyGrail::CLIMAX_VOLUME_VETO;
+    const int    emaLen      = HolyGrail::TREND_EMA_LENGTH;
+    const double zVeto       = HolyGrail::BAND_BLOWTHROUGH_VETO;
+    const double rangeVeto   = HolyGrail::WIDE_RANGE_BAR_VETO;
+    const int    atrLen      = HolyGrail::ATR_LENGTH;
+    const int    cooldown    = HolyGrail::COOLDOWN_BARS;
+    const double stopBuf     = HolyGrail::STOP_BUFFER_ATR;
+    const double minRisk     = HolyGrail::MIN_RISK_ATR;
+    const double targetR     = HolyGrail::TARGET_R;
+    const bool   showLevels  = HolyGrail::SHOW_STOP_TARGET_LINES;
+    const double arrowOff    = HolyGrail::TAG_OFFSET_ATR;
+    const bool   closeOnly   = HolyGrail::EVALUATE_ON_BAR_CLOSE;
     const int    maxTrack    = UrsMaxI(1, Input_MaxTrackBars.GetInt());
 
     int alertDir[URS_ALERT_KINDS];
@@ -1038,41 +1147,41 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     alertSound[URS_ALERT_TRAMP_CLOUD]   = Input_AlertTrCloudSound.GetInt();
 
     const double tick        = (sc.TickSize > 0) ? sc.TickSize : 1e-8;
-    const double openEqTol   = (TOMethod4::OPEN_EQ_TOLERANCE_TICKS + 0.5) * tick;
-    const int    bandLen     = TOMethod4::ALERT_BB_LENGTH;
-    const double bandMult    = TOMethod4::ALERT_BB_STDDEV;
-    const bool   bandOnClose = TOMethod4::BAND_BREAK_ON_CLOSE;
-    const bool   showBands   = TOMethod4::SHOW_ALERT_BANDS;
-    const bool   showOpenEq  = TOMethod4::MARK_OPEN_EQ_SIGNALS;
+    const double openEqTol   = (HolyGrail::OPEN_EQ_TOLERANCE_TICKS + 0.5) * tick;
+    const int    bandLen     = HolyGrail::ALERT_BB_LENGTH;
+    const double bandMult    = HolyGrail::ALERT_BB_STDDEV;
+    const bool   bandOnClose = HolyGrail::BAND_BREAK_ON_CLOSE;
+    const bool   showBands   = HolyGrail::SHOW_ALERT_BANDS;
+    const bool   showOpenEq  = HolyGrail::MARK_OPEN_EQ_SIGNALS;
 
-    const bool   showTramp     = TOMethod4::SHOW_TRAMPOLINE;
-    const int    trampMode     = TOMethod4::TRAMPOLINE_BAND_CHECK;
-    const float  trampRSIHigh  = (float)TOMethod4::TRAMPOLINE_RSI_OVERBOUGHT;
-    const float  trampRSILow   = (float)TOMethod4::TRAMPOLINE_RSI_OVERSOLD;
-    const bool   showEngulf    = TOMethod4::SHOW_ENGULFING;
-    const int    engulfRule    = TOMethod4::ENGULFING_RULE;
-    const bool   engulfNoDoji  = TOMethod4::ENGULFING_SKIP_DOJI;
+    const bool   showTramp     = HolyGrail::SHOW_TRAMPOLINE;
+    const int    trampMode     = HolyGrail::TRAMPOLINE_BAND_CHECK;
+    const float  trampRSIHigh  = (float)HolyGrail::TRAMPOLINE_RSI_OVERBOUGHT;
+    const float  trampRSILow   = (float)HolyGrail::TRAMPOLINE_RSI_OVERSOLD;
+    const bool   showEngulf    = HolyGrail::SHOW_ENGULFING;
+    const int    engulfRule    = HolyGrail::ENGULFING_RULE;
+    const bool   engulfNoDoji  = HolyGrail::ENGULFING_SKIP_DOJI;
     const bool   showSqueeze   = Input_ShowSqueeze.GetYesNo() != 0;
-    const int    sqLen         = TOMethod4::SQUEEZE_LENGTH;
+    const int    sqLen         = HolyGrail::SQUEEZE_LENGTH;
     const double sqOffset      = Input_SqueezeOffset.GetInt() * (double)sc.TickSize;
     const double trampOffset   = Input_TrampOffset.GetInt() * (double)sc.TickSize;
 
-    const bool   useLabels     = TOMethod4::USE_LABEL_TAGS;
+    const bool   useLabels     = HolyGrail::USE_LABEL_TAGS;
     const bool   classic       = !useLabels;
-    const int    labelSize     = TOMethod4::LABEL_FONT_SIZE;
-    const bool   labelGlow     = TOMethod4::GLOW_BEHIND_A_PLUS;
+    const int    labelSize     = HolyGrail::LABEL_FONT_SIZE;
+    const bool   labelGlow     = HolyGrail::GLOW_BEHIND_A_PLUS;
     const int    tagText       = Input_TagText.GetIndex();
     const bool   pinStem       = Input_PinStem.GetYesNo() != 0;
     const double pinStemLen    = Input_PinStemLength.GetFloat();
 
     // Resistance Cloud (Nadaraya-Watson envelope) settings and kernel weights
     const bool   showCloud     = Input_ShowCloud.GetYesNo() != 0;
-    const int    cloudLookback = UrsMaxI(1, TOMethod4::CLOUD_KERNEL_LOOKBACK);
-    const double cloudRelW     = TOMethod4::CLOUD_RELATIVE_WEIGHT;
-    const int    cloudWindow   = UrsMaxI(0, TOMethod4::CLOUD_START_AT_BAR) + 2;
-    const int    cloudATRLen   = UrsMaxI(1, TOMethod4::CLOUD_ATR_LENGTH);
-    const double cloudNear     = TOMethod4::CLOUD_NEAR_ATR_FACTOR;
-    const double cloudFar      = TOMethod4::CLOUD_FAR_ATR_FACTOR;
+    const int    cloudLookback = UrsMaxI(1, HolyGrail::CLOUD_KERNEL_LOOKBACK);
+    const double cloudRelW     = HolyGrail::CLOUD_RELATIVE_WEIGHT;
+    const int    cloudWindow   = UrsMaxI(0, HolyGrail::CLOUD_START_AT_BAR) + 2;
+    const int    cloudATRLen   = UrsMaxI(1, HolyGrail::CLOUD_ATR_LENGTH);
+    const double cloudNear     = HolyGrail::CLOUD_NEAR_ATR_FACTOR;
+    const double cloudFar      = HolyGrail::CLOUD_FAR_ATR_FACTOR;
     const int    cloudFirst    = (cloudWindow - 1) + (cloudATRLen - 1);   // first bar with a cloud
     const bool   alert4Cloud   = Input_Alert4Band.GetIndex() == 1;
     std::vector<double> cloudW(cloudWindow);
@@ -1100,6 +1209,15 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     const bool resetState = (sc.UpdateStartIndex == 0);
     int& pendingFrom = sc.GetPersistentInt(PKEY_PENDING_FROM);
 
+    // Cloud zone effects (see "ZONE EFFECTS" at the top)
+    const bool   zoneFx        = HolyGrail::ZONE_EFFECTS && showCloud;
+    const double zoneTouchTol  = HolyGrail::ZONE_TOUCH_TOLERANCE_TICKS * (double)sc.TickSize;
+    const int    zoneResetBars = UrsMaxI(1, HolyGrail::ZONE_RESET_BARS);
+    int&    zoneLayerZone  = sc.GetPersistentInt(PKEY_ZONE_LAYER_ZONE);
+    int&    zoneBlinkZone  = sc.GetPersistentInt(PKEY_ZONE_BLINK_ZONE);
+    int&    zoneBlinkSteps = sc.GetPersistentInt(PKEY_ZONE_BLINK_STEPS);
+    double& zoneBlinkTime  = sc.GetPersistentDouble(PKEY_ZONE_BLINK_TIME);
+
     if (resetState)
     {
         for (int k = 0; k < URS_ALERT_KINDS; ++k)
@@ -1108,6 +1226,16 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         sc.GetPersistentInt(PKEY_ALERTED_LAST_CALL) = 0;
         sc.GetPersistentInt(PKEY_LAST_ALERT_INDEX) = -1;
         pendingFrom = -1;
+
+        zoneLayerZone = 1;
+        zoneBlinkZone = 0;
+        zoneBlinkSteps = 0;
+        zoneBlinkTime = 0.0;
+        for (int z = 0; z < 2; ++z)
+        {
+            sc.GetPersistentInt(PKEY_ZONE_TOUCH_BASE + z) = -1000000;
+            sc.GetPersistentInt(PKEY_ZONE_WICK_BASE + z) = -1000000;
+        }
 
         // The cloud fill uses the study's Transparency Level; keep it at the input's value.
         if (showCloud)
@@ -1131,6 +1259,87 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         start = UrsMinI(start, pendingFrom);
         freshFrom = UrsMinI(freshFrom, pendingFrom);
     }
+
+    // ---------------------------------------------------------------- cloud zone effects: helpers
+    // The three highlight layers always cover one zone (zoneLayerZone: 1 upper, 2 lower) on every
+    // bar; pass 5 decides how many of them are drawn, and in which colour.
+    auto writeZoneLayers = [&](int i)
+    {
+        float top = 0.0f, bottom = 0.0f;
+        if (zoneFx && i >= cloudFirst)
+        {
+            if (zoneLayerZone == 2) { top = Array_LowerNear[i]; bottom = Array_LowerAvg[i]; }
+            else                    { top = Array_UpperAvg[i];  bottom = Array_UpperNear[i]; }
+        }
+        for (int k = 0; k < RG_ZONE_FX_LAYERS; ++k)
+        {
+            sc.Subgraph[RG_SG_ZONE_FX + 2 * k][i] = top;
+            sc.Subgraph[RG_SG_ZONE_FX + 2 * k + 1][i] = bottom;
+        }
+    };
+
+    // Start a blink of `zone` (1 upper, 2 lower). A blink already running with more steps left
+    // (a 3-blink wick) is not cut short by a shorter one.
+    auto startZoneBlink = [&](int zone, int blinks)
+    {
+        const int steps = 2 * UrsMaxI(1, blinks);
+        if (zoneBlinkSteps > steps)
+            return;
+        zoneBlinkZone = zone;
+        zoneBlinkSteps = steps;
+        zoneBlinkTime = RG_NowMs();
+    };
+
+    // Touch / wick events on bar i (needs the cloud on bars i-1 and i). Each event latches the
+    // bar it fired on, per zone, so re-evaluating a bar never fires it twice and the same event
+    // can't fire again on that zone for zoneResetBars bars. Only events on the newest two bars
+    // during a live update blink; older ones (chart load) just set the reset counters.
+    auto checkZoneEvents = [&](int i, bool barClosed)
+    {
+        if (!zoneFx || i <= cloudFirst)
+            return;
+        const double prevClose = sc.Close[i - 1];
+        if (!(prevClose > Array_LowerNear[i - 1] && prevClose < Array_UpperNear[i - 1]))
+            return;   // the previous bar did not close in the middle
+        const bool   live = !fullRecalc && i >= sc.ArraySize - 2;
+        const double bodyTop    = UrsMax(sc.Open[i], sc.Close[i]);
+        const double bodyBottom = UrsMin(sc.Open[i], sc.Close[i]);
+        for (int z = 0; z < 2; ++z)
+        {
+            const bool   upper = (z == 0);
+            const double inner = upper ? Array_UpperNear[i] : Array_LowerNear[i];
+            const double outer = upper ? Array_UpperAvg[i]  : Array_LowerAvg[i];
+
+            const bool touched = upper ? sc.High[i] >= inner - zoneTouchTol
+                                       : sc.Low[i]  <= inner + zoneTouchTol;
+            if (touched)
+            {
+                int& lastTouch = sc.GetPersistentInt(PKEY_ZONE_TOUCH_BASE + z);
+                if (i - lastTouch >= zoneResetBars)
+                {
+                    lastTouch = i;
+                    if (live)
+                        startZoneBlink(z + 1, HolyGrail::ZONE_TOUCH_BLINKS);
+                }
+            }
+
+            if (!barClosed)
+                continue;   // a wick vs. body verdict needs the bar's close
+            const bool wick = upper
+                ? ((sc.High[i] > inner && bodyTop <= inner) || (sc.High[i] > outer && bodyTop <= outer))
+                : ((sc.Low[i]  < inner && bodyBottom >= inner) || (sc.Low[i] < outer && bodyBottom >= outer));
+            if (wick)
+            {
+                int& lastWick = sc.GetPersistentInt(PKEY_ZONE_WICK_BASE + z);
+                if (i - lastWick >= zoneResetBars)
+                {
+                    lastWick = i;
+                    if (live)
+                        startZoneBlink(z + 1, HolyGrail::ZONE_WICK_BLINKS);
+                }
+            }
+        }
+    };
 
     AlertEvent events[URS_MAX_EVENTS];
     int eventCount = 0;
@@ -1440,6 +1649,10 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
             Array_UpperAvg[i] = 0;
             Array_LowerAvg[i] = 0;
         }
+
+        // ------------------------------------------------ cloud zone effects
+        writeZoneLayers(i);
+        checkZoneEvents(i, barClosed);
 
         // ------------------------------------------------ TraderOracle patterns
         // Same Sierra Chart calls, in the same order, as the TraderOracle module.
@@ -1846,7 +2059,7 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     // their line numbers and any old TP tags are cleaned up as stale drawings.
     {
         const int lineBase = 1100000000 + (sc.StudyGraphInstanceID % 40) * 20000000;
-        const SCString fontFace = TOMethod4::LABEL_FONT;
+        const SCString fontFace = HolyGrail::LABEL_FONT;
         enum { SLOT_BUY = 0, SLOT_SELL, SLOT_SQ_BUY, SLOT_SQ_SELL, SLOT_TP_BUY, SLOT_TP_SELL, SLOT_GLOW_BUY, SLOT_GLOW_SELL,
                SLOT_STEM_BUY, SLOT_STEM_SELL, SLOT_COUNT };
 
@@ -2003,6 +2216,127 @@ static void RG_SignalModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
                     sc.DeleteACSChartDrawing(0, TOOL_DELETE_CHARTDRAWING, lineNumber(i, slot));
             Array_LabelMask[i] = (float)want;
         }
+    }
+
+    // ================================================================ pass 5: cloud zone effects
+    // Decides what the three highlight layers show this update:
+    //   blinking, flash step : all layers, in the zone colour moved toward white / black
+    //   blinking, dim step   : no layers (the zone at its normal opacity)
+    //   price near a zone    : enough layers for +ZONE_NEAR_OPACITY_BOOST points of opacity
+    //   otherwise            : no layers
+    // Placed before the alerts, which can return early.
+    {
+        const int last = sc.ArraySize - 1;
+
+        // Which zone, if any, the last price is very close to (or inside).
+        int nearZone = 0;
+        if (zoneFx && last >= cloudFirst)
+        {
+            const double price = sc.Close[last];
+            const double gap = UrsMax(0.0, (double)Array_UpperNear[last] - (double)Array_LowerNear[last]);
+            const double nearDist = HolyGrail::ZONE_NEAR_PCT / 100.0 * gap;
+            auto distance = [&](double lo, double hi)
+            {
+                return price < lo ? lo - price : (price > hi ? price - hi : 0.0);
+            };
+            const double dUpper = distance(Array_UpperNear[last], Array_UpperAvg[last]);
+            const double dLower = distance(Array_LowerAvg[last], Array_LowerNear[last]);
+            if (dUpper <= nearDist || dLower <= nearDist)
+                nearZone = (dUpper <= dLower) ? 1 : 2;
+        }
+
+        // Advance the blink: one step per ZONE_BLINK_MS.
+        if (!zoneFx)
+            zoneBlinkSteps = 0;
+        if (zoneBlinkSteps > 0)
+        {
+            const double now = RG_NowMs();
+            if (now - zoneBlinkTime >= HolyGrail::ZONE_BLINK_MS)
+            {
+                --zoneBlinkSteps;
+                zoneBlinkTime = now;
+            }
+        }
+        const bool blinking = zoneBlinkSteps > 0;
+
+        // Layers for the near highlight. With the study's transparency t, one layer has opacity
+        // a = 1 - t, and the zone plus n layers reach 1 - t^(n+1). Use the fewest layers that
+        // reach base + boost, and give the last one only the share of the zone colour (the rest
+        // is chart background) that makes the total exactly base + boost:
+        //   total = before * t + a * share, before = opacity of the zone and the other layers.
+        const COLORREF back = RG_ChartBackground(sc);
+        const double t = UrsMax(0.0, UrsMin(1.0, Input_CloudTransparency.GetInt() / 100.0));
+        const double a = 1.0 - t;
+        const double wantOpacity = UrsMin(1.0, a + HolyGrail::ZONE_NEAR_OPACITY_BOOST / 100.0);
+        int boostLayers = 0;
+        double lastLayerShare = 1.0;
+        if (a > 1e-6 && wantOpacity > a + 1e-9)
+        {
+            boostLayers = RG_ZONE_FX_LAYERS;
+            for (int n = 1; n <= RG_ZONE_FX_LAYERS; ++n)
+                if (1.0 - pow(t, n + 1) >= wantOpacity - 1e-9)
+                {
+                    boostLayers = n;
+                    break;
+                }
+            const double before = 1.0 - pow(t, boostLayers);
+            lastLayerShare = UrsMax(0.0, UrsMin(1.0, (wantOpacity - before * t) / a));
+        }
+
+        const int target = blinking ? zoneBlinkZone : nearZone;
+        int layers = 0;
+        COLORREF color = RGB(0, 0, 0);
+        COLORREF lastColor = RGB(0, 0, 0);   // colour of the top layer
+        if (target == 1 || target == 2)
+        {
+            const COLORREF zoneColor = (target == 1) ? Subgraph_CloudUpperOuter.PrimaryColor
+                                                     : Subgraph_CloudLowerInner.PrimaryColor;
+            if (blinking)
+            {
+                if (zoneBlinkSteps % 2 == 0)   // flash step (odd steps are dim: no layers)
+                {
+                    const int brightness = (int)(((back & 0xFF) * 299 + ((back >> 8) & 0xFF) * 587
+                                                  + ((back >> 16) & 0xFF) * 114) / 1000);
+                    const COLORREF contrast = (brightness < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
+                    layers = RG_ZONE_FX_LAYERS;
+                    color = lastColor = RG_Mix(zoneColor, contrast, HolyGrail::ZONE_FLASH_MIX);
+                }
+            }
+            else
+            {
+                layers = boostLayers;
+                color = zoneColor;
+                lastColor = RG_Mix(zoneColor, back, (float)(1.0 - lastLayerShare));
+            }
+
+            // Move the layers to the target zone: rewrite every bar.
+            if (target != zoneLayerZone)
+            {
+                zoneLayerZone = target;
+                for (int i = 0; i < sc.ArraySize; ++i)
+                    writeZoneLayers(i);
+            }
+        }
+
+        for (int k = 0; k < RG_ZONE_FX_LAYERS; ++k)
+        {
+            SCSubgraphRef top = sc.Subgraph[RG_SG_ZONE_FX + 2 * k];
+            SCSubgraphRef bottom = sc.Subgraph[RG_SG_ZONE_FX + 2 * k + 1];
+            const bool on = k < layers;
+            top.DrawStyle = on ? DRAWSTYLE_TRANSPARENT_FILL_TOP : DRAWSTYLE_IGNORE;
+            bottom.DrawStyle = on ? DRAWSTYLE_TRANSPARENT_FILL_BOTTOM : DRAWSTYLE_IGNORE;
+            if (on)
+            {
+                const COLORREF c = (k == layers - 1) ? lastColor : color;
+                top.PrimaryColor = top.SecondaryColor = c;
+                bottom.PrimaryColor = bottom.SecondaryColor = c;
+            }
+        }
+
+        // Keep the study being called while the zone blinks, even without new ticks. (Little
+        // Rizzy set sc.UpdateAlways for its own blinks earlier in this update; only add to it.)
+        if (blinking)
+            sc.UpdateAlways = 1;
     }
 
     // ================================================================ alerts
@@ -3177,7 +3511,7 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
     Look.BlinkColor    = Sg_TargetHit.PrimaryColor;
     Look.BrokenColor   = In_BrokenColor.GetColor();
     Look.ExpiredColor  = In_ExpiredColor.GetColor();
-    Look.Background    = sc.ChartBackgroundColor;
+    Look.Background    = RG_ChartBackground(sc);
     Look.BaseWidth     = LineWidth < 1 ? 1 : LineWidth;
     Look.ApproachWidth = LittleRizzy::APPROACH_MAX_WIDTH;
     if (Look.ApproachWidth < Look.BaseWidth)
@@ -3383,7 +3717,9 @@ static void RG_LittleRizzyModule(SCStudyInterfaceRef sc, RG_ExternalAlerts& Ext)
         const float Wae = (WAERef.GetArraySize() > b) ? WAERef[b] : Sg_WAETrend[b];
 
         SCString Out;
-        Out.Format(" Broken         ");
+        Out.Format(" Broken %d:%02d / %s / %.0f ",
+            BarTime.GetHour(), BarTime.GetMinute(),
+            LR_FormatSigned(Wae).GetChars(), sc.Volume[b]);
         return Out;
     };
 
@@ -4039,13 +4375,13 @@ static void RG_VolumePatternsModule(SCStudyInterfaceRef sc)
     {
         Subgraph_Up.Name         = "Vol Pattern: Buy Signal";
         Subgraph_Up.DrawStyle    = DRAWSTYLE_SQUARE;
-        Subgraph_Up.PrimaryColor = RGB(113, 218, 245);   // blue (as in original)
+        Subgraph_Up.PrimaryColor = RGB(0, 128, 255);   // blue (as in original)
         Subgraph_Up.LineWidth    = 2;
         Subgraph_Up.DrawZeros    = false;
 
         Subgraph_Down.Name         = "Vol Pattern: Sell Signal";
         Subgraph_Down.DrawStyle    = DRAWSTYLE_SQUARE;
-        Subgraph_Down.PrimaryColor = RGB(255, 153, 214);
+        Subgraph_Down.PrimaryColor = RGB(0, 128, 255);
         Subgraph_Down.LineWidth    = 2;
         Subgraph_Down.DrawZeros    = false;
 
@@ -4210,32 +4546,34 @@ SCSFExport scsf_TOMethod4(SCStudyInterfaceRef sc)
         // Section separators in Study Settings >> Inputs: one titled input ahead of each
         // module's inputs. They have no effect.
         const char* LINE = "------------------------------";
-
-        // Theme 1 (index 0) is the default. Note: Sierra Chart saves input values by index, so a
-        // chart that had this study before Color Theme moved to the top must remove and re-add
-        // the study (or reset its inputs), otherwise its old values land in the wrong inputs.
-        sc.Input[RG_IN_THEME].Name = "Color Theme";
-        sc.Input[RG_IN_THEME].SetCustomInputStrings(RG_THEME_NAMES);
-        sc.Input[RG_IN_THEME].SetCustomInputIndex(0);
-        sc.Input[RG_IN_THEME].SetDescription(
-            "Colours every marker of all three modules. (dark) themes suit a dark chart background, "
-            "(light) themes a light one. Custom keeps the colours set in Study Settings >> Subgraphs; "
-            "they start as the last theme's colours.");
-
-        sc.Input[RG_IN_SEP_THEME].Name = "=========  COLOR THEME  =========";
-        sc.Input[RG_IN_SEP_THEME].SetCustomInputStrings(LINE);
-        sc.Input[RG_IN_SEP_THEME].SetCustomInputIndex(0);
-        sc.Input[RG_IN_SEP_GRAIL].Name = "=========  Reversal Logic  =========";
+        sc.Input[RG_IN_SEP_GRAIL].Name = "=========  REVERSAL GRAIL  =========";
         sc.Input[RG_IN_SEP_GRAIL].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_GRAIL].SetCustomInputIndex(0);
-        sc.Input[RG_IN_SEP_RIZZY].Name = "=========  Little Rizzy  =========";
+        sc.Input[RG_IN_SEP_RIZZY].Name = "=========  LITTLE RIZZY  =========";
         sc.Input[RG_IN_SEP_RIZZY].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_RIZZY].SetCustomInputIndex(0);
         sc.Input[RG_IN_SEP_VOLUME].Name = "=========  REVERSAL VOLUME PATTERNS  =========";
         sc.Input[RG_IN_SEP_VOLUME].SetCustomInputStrings(LINE);
         sc.Input[RG_IN_SEP_VOLUME].SetCustomInputIndex(0);
+        sc.Input[RG_IN_SEP_THEME].Name = "=========  COLOR THEME  =========";
+        sc.Input[RG_IN_SEP_THEME].SetCustomInputStrings(LINE);
+        sc.Input[RG_IN_SEP_THEME].SetCustomInputIndex(0);
 
+        // Theme 1 (index 0) is the default, so a chart that already had this study picks it up
+        // after the rebuild even if the new input reads as 0.
+        sc.Input[RG_IN_THEME].Name = "Color Theme";
+        sc.Input[RG_IN_THEME].SetCustomInputStrings(RG_THEME_NAMES);
+        sc.Input[RG_IN_THEME].SetCustomInputIndex(0);
+        sc.Input[RG_IN_THEME].SetDescription(
+            "Colours every marker of all the modules. (dark) themes suit a dark chart background, "
+            "(light) themes a light one. Custom keeps the colours set in Study Settings >> Subgraphs "
+            "(and the colour inputs); they start as the last theme's colours.");
 
+        sc.Input[RG_IN_BACKGROUND].Name = "Chart Background Color (Custom theme only)";
+        sc.Input[RG_IN_BACKGROUND].SetColor(RGB(0, 0, 0));
+        sc.Input[RG_IN_BACKGROUND].SetDescription(
+            "Colours are faded toward this when the theme is Custom. Set it to your chart's background. "
+            "The built-in themes use black for (dark) themes and white for (light) themes.");
     }
     else
         RG_ApplyTheme(sc);
