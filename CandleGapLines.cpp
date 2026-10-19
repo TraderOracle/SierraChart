@@ -190,7 +190,6 @@ SCSFExport scsf_CandleGapLines(SCStudyInterfaceRef sc)
 
         sc.GraphRegion            = 0;
         sc.AutoLoop               = 0;   // manual looping
-        sc.FreeDLL                = 0;
         sc.CalculationPrecedence  = LOW_PREC_LEVEL;
         sc.ValueFormat            = VALUEFORMAT_INHERITED;
         sc.DrawZeros              = 0;
